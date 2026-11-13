@@ -1,0 +1,57 @@
+# ---- Quartus ----
+db/
+incremental_db/
+output_files/
+greybox_tmp/
+qdb/
+tmp-clearbox/
+.qsys_edit/
+*.qws
+*.rpt
+*.summary
+*.smsg
+*.done
+*.jdi
+*.pin
+*.sld
+*.qarlog
+*.bak
+c5_pin_model_dump.txt
+PLLJ_PLLSPE_INFO.txt
+# Keep: *.qpf *.qsf *.sdc *.v *.sv *.mif *.hex *.qip
+
+# ---- Bitstreams (publish them in GitHub Releases instead) ----
+*.sof
+*.pof
+
+# ---- ModelSim / Questa ----
+work/
+transcript
+vsim.wlf
+*.wlf
+modelsim.ini
+*.vstf
+
+# ---- Node / web ----
+node_modules/
+.next/
+dist/
+.vercel/
+.env*
+
+# ---- Editors / OS ----
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- Verilator / GCC / Python build outputs (generated in WSL) ----
+obj_dir/
+build/
+*.o
+*.elf
+*.map
+__pycache__/
+*.pyc

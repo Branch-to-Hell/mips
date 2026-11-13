@@ -1,0 +1,11 @@
+# Normalize line endings so Windows and Linux see the same files
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+
+# Binary files
+*.sof binary
+*.pof binary
+*.png binary
+*.jpg binary
+*.mp4 binary
