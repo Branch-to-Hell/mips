@@ -3,11 +3,18 @@ module mips_cpu #(
 	parameter REGS_INIT = ""   // initial register values (simulation tests only)
 )(
 	input clk,
-	input reset
+	input reset,
+
+	// Memory bus (contracts.md): the top level connects it to data memory, stack, framebuffer and MMIO
+	output [31:0] mem_addr,
+	output [31:0] mem_wdata,
+	output mem_we,
+	output mem_re,
+	input [31:0] mem_rdata
 );
 
 // Data wires
-wire [31:0] PC_out, PC_next, Instruction;
+wire [31:0] PC_out, PC_next, PC_fetch, Instruction;
 wire [31:0] DR1, DR2, ALUResult;
 wire [3:0] ALUctl;
 wire Zero;
@@ -32,13 +39,15 @@ assign WriteData = MemtoReg ? MemReadData : ALUResult;
 // 1. Fetch the instruction
 pc pc_reg(.clk(clk), .reset(reset), .PC_next(PC_next), .PC_out(PC_out));
 adder add4(.A(PC_out), .B(32'd4), .R(PC_next));
-instruction_memory #(.INIT_FILE(IMEM_INIT)) im(.Address(PC_out), .Instruction(Instruction));
+// the instruction memory gets the same value as the PC, including the reset value
+assign PC_fetch = reset ? 32'h0040_0000 : PC_next;
+instruction_memory #(.INIT_FILE(IMEM_INIT)) im(.clk(clk), .Address(PC_fetch), .Instruction(Instruction));
 
 // 2. Decide what to do
 control_unit cu(
 	.opcode(Instruction[31:26]),
-	.RegDst(RegDst), .ALUSrc(ALUSrc), .MemtoReg(MemtoReg), 
-	.RegWrite(RegWrite), .MemRead(MemRead), .MemWrite(MemWrite), 
+	.RegDst(RegDst), .ALUSrc(ALUSrc), .MemtoReg(MemtoReg),
+	.RegWrite(RegWrite), .MemRead(MemRead), .MemWrite(MemWrite),
 	.Branch(Branch), .ALUOp(ALUOp)
 );
 
@@ -58,14 +67,11 @@ register_file #(.INIT_FILE(REGS_INIT)) rf(
 alu_control aluc(.ALUOp(ALUOp), .funct(Instruction[5:0]), .opcode(Instruction[31:26]), .ALUctl(ALUctl));
 alu alu_unit(.ALUctl(ALUctl), .A(DR1), .B(ALU_B), .shamt(Instruction[10:6]), .ALUOut(ALUResult), .Zero(Zero));
 
-// 5. Data memory
-data_memory dm(
-    .clk(clk),
-    .MemRead(MemRead && !reset),
-    .MemWrite(MemWrite && !reset),
-    .Address(ALUResult),
-    .WriteData(DR2),
-    .ReadData(MemReadData)
-);
+// 5. Memory access, through the bus
+assign mem_addr = ALUResult;
+assign mem_wdata = DR2;
+assign mem_we = MemWrite && !reset;
+assign mem_re = MemRead && !reset;
+assign MemReadData = mem_rdata;
 
 endmodule

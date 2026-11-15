@@ -8,7 +8,10 @@ integer errors = 0;
 mips_cpu #(
     .IMEM_INIT("../mem/test_rtype.hex"),
     .REGS_INIT("rtype_regs.bin")
-) dut(.clk(clk), .reset(reset));
+) dut(
+    .clk(clk), .reset(reset),
+    .mem_addr(), .mem_wdata(), .mem_we(), .mem_re(), .mem_rdata(32'd0) // R-type doesn't use memory
+);
 
 initial clk = 0;
 always #5 clk = ~clk;
