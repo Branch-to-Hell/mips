@@ -16,6 +16,7 @@ always @*
 			4'd2: ALUOut = A + B;
 			4'd3: ALUOut = B << shamt;  // sll: rd = rt << shamt
 			4'd4: ALUOut = B >> shamt;  // srl: rd = rt >> shamt (logical)
+			4'd5: ALUOut = {B[15:0], 16'b0}; // lui
 			4'd6: ALUOut = A - B;
 			4'd7: ALUOut = ($signed(A) < $signed(B)) ? 1:0;
 			4'd12: ALUOut = ~(A | B);
