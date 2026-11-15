@@ -17,3 +17,5 @@ The original datapath used `rd` as the destination, `DR2` as the ALU's second op
 The green blocks show the added selectors, immediate extension, and data memory. Blue lines represent control signals. Diagram labels match the Verilog signal names; explanatory annotations are in Spanish.
 
 ![CPU-2 datapath with immediate operations and data memory](images/cpu_actual.png)
+
+*Use IA for images*
