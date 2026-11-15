@@ -6,7 +6,7 @@ what the monitor would show in frame.ppm (640x480), so the image can be seen wit
 module video_mode_a_tb;
 
 reg clk = 0;
-always #10 clk = ~clk; // 50 MHz
+always #20 clk = ~clk; // 25 MHz, like the PLL
 
 reg a_we = 0;
 reg [13:0] a_addr = 0;
@@ -17,21 +17,22 @@ wire hs, vs;
 
 video_mode_a #(.INIT_FILE("../mem/fb_test.hex")) dut (
     .clk(clk),
-    .a_we(a_we), .a_addr(a_addr), .a_wdata(a_wdata), .a_rdata(a_rdata),
+    .a_clk(clk), .a_we(a_we), .a_addr(a_addr), .a_wdata(a_wdata), .a_rdata(a_rdata),
     .VGA_R(r), .VGA_G(g), .VGA_B(b), .VGA_HS(hs), .VGA_VS(vs)
 );
 
 integer f, errors = 0, pixels = 0, hs_low = 0, vs_low = 0;
 reg [9:0] h_d, v_d; // h and v delayed 1 cycle, like the color
 
-// 1. CPU port: write a color and read it back
+/* 1. CPU port: write a color and read it back
+Like the CPU: the address is set after posedge and the memory works on negedge
+*/
 initial begin
-    @(posedge clk);
+    @(posedge clk); #1;
     a_we = 1; a_addr = 14'd12287; a_wdata = 32'h00FF8000; // last pixel, orange
-    @(posedge clk);
+    @(posedge clk); #1; // the write happened on the negedge in between
     a_we = 0;
-    @(posedge clk);
-    #1;
+    @(negedge clk); #1; // read of the same pixel
     if (a_rdata !== 32'h00FF8800) begin
         $display("ERROR port A: read %h, expected 00FF8800", a_rdata);
         errors = errors + 1;

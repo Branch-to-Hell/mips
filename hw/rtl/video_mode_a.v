@@ -2,11 +2,13 @@
 Each pixel is drawn as a 5x5 square (640/5 = 128, 480/5 = 96)
 */
 module video_mode_a #(
-    parameter INIT_FILE = "" // initial image (.hex)
+    parameter INIT_FILE = "", // initial image (.hex)
+    parameter CLK_50 = 0 // 0 = clk is 25 MHz; 1 = clk is 50 MHz (see vga_sync.v)
 )(
-    input clk, // 50 MHz
+    input clk, // pixel clock
 
     // CPU port, goes straight to the framebuffer
+    input a_clk,
     input a_we,
     input [13:0] a_addr,
     input [31:0] a_wdata,
@@ -22,7 +24,7 @@ module video_mode_a #(
 // 1. VGA timing
 wire pix_en, hsync, vsync, visible;
 wire [9:0] h, v;
-vga_sync sync (
+vga_sync #(.CLK_50(CLK_50)) sync (
     .clk(clk), .pix_en(pix_en), .h(h), .v(v),
     .hsync(hsync), .vsync(vsync), .visible(visible)
 );
@@ -64,9 +66,8 @@ wire [13:0] b_addr = {y_cell, x_cell}; // same as y*128 + x
 // 3. Read the framebuffer
 wire [11:0] color;
 framebuffer_a #(.INIT_FILE(INIT_FILE)) fb (
-    .clk(clk),
-    .a_we(a_we), .a_addr(a_addr), .a_wdata(a_wdata), .a_rdata(a_rdata),
-    .b_addr(b_addr), .b_data(color)
+    .a_clk(a_clk), .a_we(a_we), .a_addr(a_addr), .a_wdata(a_wdata), .a_rdata(a_rdata),
+    .b_clk(clk), .b_addr(b_addr), .b_data(color)
 );
 
 // 4. Delay the signals 1 cycle so they arrive with their color

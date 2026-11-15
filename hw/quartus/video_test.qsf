@@ -13,6 +13,7 @@ set_global_assignment -name VERILOG_FILE ../rtl/top_video_test.v
 set_global_assignment -name VERILOG_FILE ../rtl/video_mode_a.v
 set_global_assignment -name VERILOG_FILE ../rtl/framebuffer_a.v
 set_global_assignment -name VERILOG_FILE ../rtl/vga_sync.v
+set_global_assignment -name VERILOG_FILE ../rtl/pll_25.v
 set_global_assignment -name SDC_FILE video_test.sdc
 
 # Pins (same as VGA_Frame, already tested on the board)
