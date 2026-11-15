@@ -68,7 +68,10 @@ alu_control aluc(.ALUOp(ALUOp), .funct(Instruction[5:0]), .opcode(Instruction[31
 alu alu_unit(.ALUctl(ALUctl), .A(DR1), .B(ALU_B), .shamt(Instruction[10:6]), .ALUOut(ALUResult), .Zero(Zero));
 
 // 5. Memory access, through the bus
-assign mem_addr = ALUResult;
+/* The address has its own adder (base + offset) instead of using ALUResult,
+so it doesn't wait for the whole ALU (shifter included) before the negedge
+*/
+assign mem_addr = DR1 + ExtendedImm;
 assign mem_wdata = DR2;
 assign mem_we = MemWrite && !reset;
 assign mem_re = MemRead && !reset;

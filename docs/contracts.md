@@ -51,7 +51,7 @@ The hardware doesn't implement the whole 4 GB. The address decoder looks at the 
 
 | Port | Dir | Notes |
 |---|---|---|
-| `mem_addr[31:0]` | out | Byte address (ALU result) |
+| `mem_addr[31:0]` | out | Byte address, `rs + offset` from its own adder (not the ALU, to keep the half-cycle path short) |
 | `mem_wdata[31:0]` | out | Data for `sw` |
 | `mem_we` | out | 1 = write (`sw`) |
 | `mem_re` | out | 1 = read (`lw`) |
