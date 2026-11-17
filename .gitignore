@@ -55,3 +55,6 @@ build/
 *.map
 __pycache__/
 *.pyc
+
+# ---- Simulation images ----
+*.ppm
