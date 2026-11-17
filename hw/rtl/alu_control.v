@@ -1,6 +1,7 @@
 module alu_control(
     input  [1:0] ALUOp,
     input  [5:0] funct,
+    input  [5:0] opcode,
     output reg [3:0] ALUctl
 );
 
@@ -8,6 +9,15 @@ always @(*) begin
     case (ALUOp) // 00 and 01: the operation is already decided, funct is ignored (lw, sw, beq)
         2'b00: ALUctl = 4'b0010; // add for lw and sw
         2'b01: ALUctl = 4'b0110; // sub for beq
+        2'b11: begin
+            case (opcode)
+                6'b001100: ALUctl = 4'b0000; // andi
+                6'b001101: ALUctl = 4'b0001; // ori
+                6'b001010: ALUctl = 4'b0111; // slti
+                6'b001111: ALUctl = 4'b0101; // lui
+                default: ALUctl = 4'b0000;
+            endcase
+        end
         2'b10: begin
             case (funct) // here funct matters
                 6'b100100: ALUctl = 4'b0000; // and

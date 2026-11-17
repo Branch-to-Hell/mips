@@ -8,12 +8,16 @@ module register_file #(
 	output [31:0] DR1, DR2
 );
 
-reg [31:0] registers [0:31];
+/* Keep the registers as logic (flip-flops), not M9K.
+If not, Quartus uses the instruction memory output register to put the registers in a M9K,
+and the instruction memory ends up as logic (no In-System Memory Content Editor)
+*/
+(* ramstyle = "logic" *) reg [31:0] registers [0:31];
 
 assign DR1 = registers[AR1];
 assign DR2 = registers[AR2];
 
-always @(negedge clk) begin // contracts.md: write on negedge, read afterwards
+always @(posedge clk) begin // single-cycle: write at the end of the cycle (data memory reads on negedge)
     if (RegWrite && AW != 5'd0) // write enabled and the address isn't $zero?
 		registers[AW] <= DW; // store data DW in register number AW
 end

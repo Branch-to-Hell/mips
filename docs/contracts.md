@@ -24,7 +24,7 @@ Pseudo-instructions handled by our assembler: `li la move nop`.
 - Classic 5 stages: IF, ID, EX, MEM, WB.
 - **Hazard detection unit:** stalls the pipeline on data hazards (including load-use). Forwarding is optional (P1) and only adds speed.
 - **Branches and jumps resolved in ID**, with **1 branch delay slot**: the instruction right after a branch/jump always executes (real MIPS behavior, what GCC expects).
-- Register file writes on `negedge`, reads afterwards in the same cycle.
+- Register file writes on `negedge`, reads afterwards in the same cycle. (The single-cycle CPU writes it on `posedge` instead, see "Memory timing".)
 - **Memory stall input:** the whole pipeline freezes while a memory access isn't ready (needed for SDRAM).
 
 ### Delay-slot rule for assembly programs
@@ -45,6 +45,25 @@ The hardware doesn't implement the whole 4 GB. The address decoder looks at the 
 | MMIO | `0xFFFF_0010` – `0xFFFF_0027` | 6 registers | See below. `0xFFFF_0000`–`0xFFFF_000C` are left free for MARS's keyboard/display simulator |
 | Framebuffer mode B (phase 2) | defined in Sprint 2 | 320×200 bytes + palette | Doom only |
 | SDRAM (phase 2) | defined in Sprint 2 | 64 MB | Doom code, data, heap and WAD |
+
+### CPU memory bus
+`mips_cpu` has no memory inside except the instruction memory. Loads and stores go out through this bus, and the top level (`top_life`, PLT-3) sends each access to data, stack, framebuffer or MMIO by looking at the address.
+
+| Port | Dir | Notes |
+|---|---|---|
+| `mem_addr[31:0]` | out | Byte address, `rs + offset` from its own adder (not the ALU, to keep the half-cycle path short) |
+| `mem_wdata[31:0]` | out | Data for `sw` |
+| `mem_we` | out | 1 = write (`sw`) |
+| `mem_re` | out | 1 = read (`lw`) |
+| `mem_rdata[31:0]` | in | Data for `lw`, must be valid before the next `posedge` |
+
+Phase 2 adds a `mem_stall` input here (CPU-9).
+
+### Memory timing
+All memories read on a clock edge, so Quartus can place them in M9K blocks (a combinational read doesn't fit: 16 KB of flip-flops is more than the whole FPGA).
+- **Instruction memory:** reads on `posedge` using the **next PC** (the same value that goes into the PC register), so the instruction is ready right after the edge.
+- **Data memory, stack, framebuffer port A and MMIO:** read and write on `negedge`. The ALU has the first half of the cycle to compute the address; the read data is ready for the second half.
+- **Register file (single-cycle):** writes on `posedge`, at the end of the cycle, after the `negedge` read. If it wrote on `negedge`, a `lw` would store the old data.
 
 ### MMIO registers
 | Address | Register | Access | Notes |

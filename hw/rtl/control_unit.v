@@ -20,7 +20,57 @@ always @(*) begin
 			MemRead = 1'b0;
 			MemWrite = 1'b0;
 			Branch = 1'b0;
-			ALUOp = 2'b10;
+			ALUOp = 2'b10; // ALU Control uses funct
+		end
+		6'b001000: begin // addi
+			RegDst   = 1'b0;
+			ALUSrc   = 1'b1;
+			MemtoReg = 1'b0;
+			RegWrite = 1'b1;
+			MemRead  = 1'b0;
+			MemWrite = 1'b0;
+			Branch   = 1'b0;
+			ALUOp    = 2'b00;
+		end
+		6'b001100, 6'b001101, 6'b001010: begin // andi , ori , slti
+			RegDst = 1'b0;
+			ALUSrc = 1'b1;
+			MemtoReg = 1'b0;
+			RegWrite = 1'b1;
+			MemRead = 1'b0;
+			MemWrite = 1'b0;
+			Branch = 1'b0;
+			ALUOp = 2'b11; // ALU Control uses the opcode
+		end
+		6'b001111: begin // lui
+			RegDst   = 1'b0;
+			ALUSrc   = 1'b1; // operand B gets the immediate
+			MemtoReg = 1'b0;
+			RegWrite = 1'b1;
+			MemRead  = 1'b0;
+			MemWrite = 1'b0;
+			Branch   = 1'b0;
+			ALUOp    = 2'b11; // ALU Control uses the opcode
+		end
+		6'b100011: begin //lw
+			RegDst = 1'b0;
+			ALUSrc = 1'b1;
+			MemtoReg = 1'b1;
+			RegWrite = 1'b1;
+			MemRead = 1'b1;
+			MemWrite = 1'b0;
+			Branch = 1'b0;
+			ALUOp = 2'b00; // add: base + offset
+		end
+		6'b101011: begin //sw
+			RegDst = 1'b0;
+			ALUSrc = 1'b1;
+			MemtoReg = 1'b0;
+			RegWrite = 1'b0;
+			MemRead = 1'b0;
+			MemWrite = 1'b1;
+			Branch = 1'b0;
+			ALUOp = 2'b00; // add: base + offset
 		end
 		default: begin
 			RegDst = 1'b0;
@@ -34,5 +84,4 @@ always @(*) begin
 		end
 	endcase
 end
-
 endmodule
