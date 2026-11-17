@@ -58,3 +58,6 @@ __pycache__/
 
 # ---- Simulation images ----
 *.ppm
+
+# ---- Reports (kept outside the repo) ----
+docs/report/

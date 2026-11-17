@@ -184,7 +184,7 @@ Everyone has this ready before picking up a task. Details of each tool's configu
 | WEB-2 | Assembler page | Uriel (content) + Yocelyn | P0 | S2 | Explains usage and encoding |
 | WEB-3 | CPU page: ISA table, datapath and pipeline diagrams, hazard unit | Victor (content) + Yocelyn | P0 | S3 | Published |
 | WEB-4 | Game of Life and Doom pages, with screenshots | Yocelyn | P0 | S3 | Published |
-| WEB-5 | Report draft of your own section | Everyone | P0 | S2–S3 | In `docs/report/` |
+| WEB-5 | Report draft of your own section | Everyone | P0 | S2–S3 | Draft shared with the team (not in the repo) |
 | DEMO-1 | Freeze the demo build: tag the commit and keep the `.sof` + `.mif` files used in the validations (GitHub Release + USB) | Ariel | P0 | S3 (Wed Nov 25) | The exact files we'll use on Nov 30 are tagged and backed up |
 | DEMO-2 | 5-minute slides and script | Yocelyn | P0 | S3 | Reviewed by the team |
 | DEMO-3 | Full rehearsal | Everyone | P0 | S3 (Fri Nov 27) | Done once end to end |

@@ -59,7 +59,9 @@ Example: Victor takes the issue **#12 "I/J control unit"**.
 | Reference simulator, trace scripts, converters | `sw/tools/` | `ref_sim.py`, `trace_diff.py` |
 | Doom port (C) | `sw/doom/` | `doomgeneric_mips.c`, `linker.ld`, `crt0.S` |
 | Website code or content | `web/` | — |
-| Docs, report drafts, lab checklists | `docs/` | `docs/report/cpu.md`, `docs/lab/2026-11-18.md` |
+| Docs, lab checklists | `docs/` | `docs/lab/2026-11-18.md` |
+
+**Reports are not stored in the repo.** Report drafts, task paragraphs and report images are kept outside GitHub; `docs/report/` is ignored by git.
 
 ## Naming
 - File and folder names in **lowercase**, words separated by `_` (Verilog) or `-` (folders/web).
@@ -73,7 +75,7 @@ Use it wherever it saves time (Verilog, tests, tools, C, docs). Ask for the **te
 1. Simulation passes.
 2. PR reviewed and merged.
 3. The author can explain it in 2 minutes without notes (we use AI consciously).
-4. One paragraph for the report.
+4. One paragraph for the report (outside the repo).
 
 ## Lab rules
 - Nothing goes to the lab without passing simulation first.
