@@ -1,13 +1,18 @@
 `timescale 1ns/1ns
-// PLT-3 / LIFE-5 test: life_system running life_board.hex. Run from hw/sim: do life.do
+// PLT-3 / LIFE-5 / LIFE-3 test: life_system running life_board.hex. Run from hw/sim: do life.do
 /* Reads the 32x24 board back from the framebuffer (every 4x4 block must be all white
 or all black) and compares each generation with a Game of Life model written here.
 Short debounce (50 cycles) so the key presses are fast. Checks:
   1. starts paused with a glider, LEDR0 off, HEX 0
   2. KEY1 runs: 8 generations match the model (the glider moves), LEDR0 on, HEX counts
   3. KEY1 again pauses: no new generations, board unchanged
-  4. KEY0 loads the pattern from SW5-4: empty, R-pentomino, random
+  4. while running, KEY0 loads the pattern from SW5-4: empty, R-pentomino, random
   5. random board: 3 generations match the model (lots of wrap-around)
+  6. edit mode (LIFE-3): paused on an empty board, SW9-5/SW4-0 move a red cursor,
+     KEY0 toggles cells (a glider is drawn, one cell is toggled on and off again),
+     the cursor leaves no trace, and the drawn glider evolves like the model
+While paused the cursor is hidden with SW9-5 = 11000 (row 24) so read_board only sees
+black and white cells.
 The end of a generation is when the PC reaches addi $k0, $k0, 1 (found by its
 instruction), right after generation + draw.
 Key presses last 200,000 cycles (8 ms), shorter than a real click (~100 ms):
@@ -20,7 +25,7 @@ localparam PRESS = 200_000;            // cycles a key is held, and then release
 localparam TIMEOUT = 1_000_000;        // cycles per generation, much more than needed
 
 reg clk = 0, reset = 1;
-reg [9:0] SW = 0;
+reg [9:0] SW = 10'h300;                // row 24: no cursor
 reg [1:0] KEY = 2'b11;                 // active-low, released
 wire [9:0] LEDR;
 wire [7:0] HEX0, HEX1, HEX2, HEX3, HEX4, HEX5;
@@ -158,6 +163,35 @@ task check_cells(input integer count, input [8*48-1:0] what);
         $display("ok    %0s", what);
 endtask
 
+// Color of the top-left pixel of a cell (12 bits, RGB)
+function [11:0] cell_color(input integer row, input integer col);
+    cell_color = sys.video.fb.mem[(row * 4) * 128 + col * 4];
+endfunction
+
+/* Edit mode: move the cursor with the switches, press KEY0 and check the cell now
+shows its new state (the program shows it for a full blink period, ~6M cycles).
+When the cursor moves to a new cell it must show red right away; on the same cell
+it is still showing the real color from the previous toggle
+*/
+task toggle_cell(input integer row, input integer col, input expect_alive);
+    reg moved;
+    begin
+        moved = (SW !== {row[4:0], col[4:0]});
+        SW = {row[4:0], col[4:0]};
+        wait_cycles(2_000);
+        if (moved && cell_color(row, col) !== 12'hF00) begin
+            $display("FAIL  cursor at (%0d,%0d) is %h, expected red", row, col, cell_color(row, col));
+            errors = errors + 1;
+        end
+        press(0);
+        if (cell_color(row, col) !== (expect_alive ? 12'hFFF : 12'h000)) begin
+            $display("FAIL  cell (%0d,%0d) after KEY0 is %h", row, col, cell_color(row, col));
+            errors = errors + 1;
+        end else
+            $display("ok    cell (%0d,%0d) toggled %0s", row, col, expect_alive ? "on" : "off");
+    end
+endtask
+
 initial begin
     for (i = 0; i < 32; i = i + 1) sys.cpu.rf.registers[i] = 0;  // like the FPGA after power-up
     done_addr = 32'hFFFF_FFFF;
@@ -180,7 +214,7 @@ initial begin
     if (gens != 0) fail("ran a generation while paused");
 
     // 2. KEY1 runs; 8 generations (2 full glider cycles)
-    SW = 10'h00F;                       // fastest
+    SW = 10'h30F;                       // fastest, cursor hidden
     press(1);
     wait_generation(0);                 // start from a fully drawn board
     for (g = 1; g <= 8; g = g + 1) begin
@@ -203,15 +237,19 @@ initial begin
     check_same_as(0, "paused: board unchanged");
     if (LEDR[0] !== 1'b0) fail("LEDR0 should be off after pausing");
 
-    // 4. KEY0 loads the pattern from SW5-4
-    SW = 10'h02F;                       // 10 = empty
+    /* 4. While running, KEY0 loads the pattern from SW5-4.
+    Speed 0: after a load the program waits ~5M cycles before the next generation,
+    so the freshly loaded pattern can be read
+    */
+    press(1);                           // run
+    SW = 10'h320;                       // 10 = empty, speed 0
     press(0);
     wait_cycles(60_000);
     read_board;
     check_cells(0, "empty pattern");
     if (sys.io.hex_reg !== 0) fail("HEX should go back to 0 after loading");
 
-    SW = 10'h03F;                       // 11 = R-pentomino
+    SW = 10'h330;                       // 11 = R-pentomino
     press(0);
     wait_cycles(60_000);
     read_board;
@@ -219,21 +257,64 @@ initial begin
     if (!(board[10*32+15] && board[10*32+16] && board[11*32+14] && board[11*32+15] && board[12*32+15]))
         fail("R-pentomino cells");
 
-    SW = 10'h01F;                       // 01 = random
+    SW = 10'h310;                       // 01 = random
     press(0);
     wait_cycles(60_000);
     read_board;
     if (alive < 100 || alive > 300) fail("random pattern density");
     else $display("ok    random pattern (%0d alive, about 1 in 4)", alive);
 
-    // 5. Random board runs and matches the model
-    press(1);
+    // 5. A new random board at full speed matches the model
+    SW = 10'h31F;                       // 01 = random, fastest
+    press(0);
     wait_generation(0);
     for (g = 1; g <= 3; g = g + 1)
         check_generation(g);
 
-    if (errors) $fatal(1, "LIFE-5: %0d error(s)", errors);
-    $display("PASS: PLT-3/LIFE-5 Game of Life on life_system (11 generations checked)");
+    // 6. Edit mode (LIFE-3): empty board, pause, draw a glider with the cursor
+    SW = 10'h32F;                       // 10 = empty, fastest
+    press(0);
+    SW = 10'h300;                       // cursor hidden
+    press(1);                           // pause
+    wait_cycles(10_000);
+    read_board;
+    check_cells(0, "edit mode: empty board");
+    if (LEDR[0] !== 1'b0) fail("LEDR0 should be off in edit mode");
+    g = gens;
+
+    toggle_cell(0, 0, 1);               // on and off again: toggling works both ways
+    toggle_cell(0, 0, 0);
+    toggle_cell(5, 11, 1);              // glider:  .X. / ..X / XXX  at rows 5-7, columns 10-12
+    toggle_cell(6, 12, 1);
+    toggle_cell(7, 10, 1);
+    toggle_cell(7, 11, 1);
+    toggle_cell(7, 12, 1);
+    toggle_cell(23, 31, 1);             // last cell: row 23 = SW9-5 10111, column 31 = SW4-0 11111
+    toggle_cell(23, 31, 0);
+
+    SW = 10'h300;                       // hide the cursor: its cell goes back to its real color
+    wait_cycles(2_000);
+    read_board;                         // also fails on any red pixel left behind
+    check_cells(5, "edit mode: drawn glider");
+    if (!(board[5*32+11] && board[6*32+12] && board[7*32+10] && board[7*32+11] && board[7*32+12]))
+        fail("drawn glider cells");
+    if (gens != g) fail("generations while editing");
+
+    // The drawn glider evolves: the first generation comes right after KEY1
+    SW = 10'h30F;                       // fastest, cursor hidden
+    save_prev;
+    KEY[1] = 0;                         // hold KEY1 while the first generation runs
+    wait_generation(1);
+    KEY[1] = 1;
+    step_model;
+    check_same_as(1, "drawn glider: generation 1 matches the model");
+    for (g = 2; g <= 4; g = g + 1) begin
+        check_generation(g);
+        check_cells(5, "drawn glider still has 5 cells");
+    end
+
+    if (errors) $fatal(1, "LIFE-5/LIFE-3: %0d error(s)", errors);
+    $display("PASS: PLT-3/LIFE-5/LIFE-3 Game of Life on life_system (15 generations checked)");
     $finish;
 end
 endmodule
