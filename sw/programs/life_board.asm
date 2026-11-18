@@ -1,22 +1,29 @@
-# life_board.asm - Conway's Game of Life on the DE10-Lite (LIFE-5)
+# life_board.asm - Conway's Game of Life on the DE10-Lite (LIFE-5, LIFE-3)
 # Same game as life.asm (LIFE-1, LIFE-2); only the input and the delay change:
 # life.asm reads MARS's keyboard simulator, this one reads our MMIO (docs/contracts.md).
 #   - 32x24 board, each cell is a 4x4-pixel block on the 128x96 framebuffer (0x10040000)
 #   - two buffers (current / next), the 4 rules, wrap-around edges
 #   - Phase 1 instructions only
 # The main loop reads the keys on every pass (~20 cycles) and counts passes to
-# pace the generations, so a quick click is never missed while waiting.
+# pace the generations and the cursor blink, so a quick click is never missed.
 # Machine code: hw/mem/life_board.hex, runs on top_life (PLT-3):
 #   python sw/assembler/assembler.py sw/programs/life_board.asm -o hw/mem
 #
 # Controls (KEY = 1 when pressed; the program reacts on the press edge):
-#   KEY1    = run/pause
-#   KEY0    = load the pattern chosen with SW5-4:
+#   KEY1    = run/pause (running starts with a generation right away)
+#   Running:
+#     KEY0  = load the pattern chosen with SW5-4:
 #             00 glider, 01 random, 10 empty, 11 R-pentomino
-#   SW3-0   = speed, 0 slowest (~0.2 s per generation) to 15 fastest (~20 ms)
+#             (the new pattern stays on screen for one full wait before it evolves)
+#     SW3-0 = speed, 0 slowest (~0.2 s per generation) to 15 fastest (~20 ms)
+#   Paused = edit mode (LIFE-3):
+#     SW4-0 = cursor column (0-31), SW9-5 = cursor row (0-23; 24-31 hide the cursor)
+#     the cursor cell blinks between red and its real color (~0.25 s each)
+#     KEY0  = toggle the cell under the cursor (alive <-> dead)
 #   LEDR0   = on while running
 #   HEX     = generation number (0 after loading a pattern)
-# Starts paused with a glider.
+# Starts paused with a glider. To draw from scratch: run, load "empty" (SW5-4 = 10),
+# pause, draw with the switches and KEY0, then run.
 .data
 buf_a: .space 3072              # 32 x 24 words
 buf_b: .space 3072
@@ -36,6 +43,9 @@ main:
     addi $k0, $zero, 0          # k0 = generation number
     addi $v1, $zero, 1          # v1 = passes left until the next generation
     addi $a0, $zero, 0          # a0 = pattern: 0 glider, 1 random, 2 empty, 3 R-pentomino
+    addi $a1, $zero, -1         # a1 = cursor cell (row*32 + column), -1 = no cursor
+    addi $a2, $zero, 1          # a2 = passes left until the cursor blinks
+    addi $a3, $zero, 0          # a3 = blink phase: 1 = red, 0 = the cell's real color
     jal  load_pattern
     jal  draw
 
@@ -50,24 +60,70 @@ main_loop:
     and  $t2, $t1, $t2          # t2 = keys pressed since the previous pass
     addi $fp, $t1, 0
     andi $t3, $t2, 2            # KEY1: run/pause
-    beq  $t3, $zero, key0
+    beq  $t3, $zero, cursor
     addi $t3, $zero, 1
     sub  $s7, $t3, $s7          # toggle run/pause
+    addi $v1, $zero, 1          # running: first generation on the next pass
+    addi $a3, $zero, 0
+    jal  cursor_paint           # cursor cell back to its real color
+    addi $a1, $zero, -1         # no cursor (if paused, the next lines place it again)
+
+# ---- edit mode (paused): the switches move the cursor ----
+cursor:
+    bne  $s7, $zero, key0       # running: no cursor
+    srl  $t4, $t0, 5            # t4 = row (SW9-5)
+    andi $t5, $t0, 31           # t5 = column (SW4-0)
+    addi $t7, $zero, -1         # t7 = new cursor cell
+    slti $t6, $t4, 24
+    beq  $t6, $zero, cur_moved  # rows 24-31 don't exist: no cursor
+    sll  $t7, $t4, 5
+    add  $t7, $t7, $t5
+cur_moved:
+    beq  $t7, $a1, key0         # same cell as before
+    addi $a3, $zero, 0
+    jal  cursor_paint           # old cell back to its real color
+    addi $a1, $t7, 0
+    addi $a2, $zero, 1          # show the cursor at the end of this pass
+
 key0:
-    andi $t3, $t2, 1            # KEY0: load the pattern from SW5-4
+    andi $t3, $t2, 1            # KEY0: toggle (paused) or load a pattern (running)
     beq  $t3, $zero, tick
-    srl  $a0, $t0, 4
+    beq  $s7, $zero, toggle
+    srl  $a0, $t0, 4            # running: load the pattern from SW5-4
     andi $a0, $a0, 3
     addi $k0, $zero, 0
     jal  load_pattern
     jal  draw
+    j    wait                   # full wait before the new pattern evolves
+toggle:
+    slt  $t3, $a1, $zero
+    bne  $t3, $zero, tick       # no cursor: nothing to toggle
+    sll  $t3, $a1, 2
+    add  $t3, $t3, $s1          # address of the cell in the current buffer
+    lw   $t4, 0($t3)
+    addi $t5, $zero, 1
+    sub  $t4, $t5, $t4          # 0 <-> 1
+    sw   $t4, 0($t3)
+    addi $a3, $zero, 0
+    jal  cursor_paint           # show the new state right away...
+    lui  $a2, 4                 # ...for a full blink period
+
 tick:
-    beq  $s7, $zero, main_loop  # paused: keep polling
+    bne  $s7, $zero, run
+    addi $a2, $a2, -1           # paused: count passes until the cursor blinks
+    bne  $a2, $zero, main_loop
+    lui  $a2, 4                 # 4 x 65,536 passes (~24 cycles each, ~0.25 s)
+    addi $t3, $zero, 1
+    sub  $a3, $t3, $a3          # toggle the blink phase
+    jal  cursor_paint
+    j    main_loop
+run:
     addi $v1, $v1, -1           # running: count passes until the next generation
     bne  $v1, $zero, main_loop
     jal  generation
     jal  draw
     addi $k0, $k0, 1            # generation done (hw/sim/life_tb.v looks for this instruction)
+wait:
     addi $t0, $zero, 16
     sub  $t0, $t0, $s5
     sll  $v1, $t0, 14           # wait (16 - speed) x 16,384 passes (~20 cycles each, ~13 ms)
@@ -142,44 +198,66 @@ gen_next:
 
 # ---- draw: paint every cell as a 4x4 block on the framebuffer ----
 draw:
-    addi $t0, $zero, 0          # row
-draw_row:
-    addi $t1, $zero, 0          # column
-draw_col:
-    sll  $t2, $t0, 5
-    add  $t2, $t2, $t1
-    sll  $t2, $t2, 2
+    addi $k1, $ra, 0            # paint_cell overwrites $ra
+    addi $t8, $zero, 0          # t8 = cell 0..767 (row*32 + column)
+draw_loop:
+    sll  $t2, $t8, 2
     add  $t2, $t2, $s1
     lw   $t3, 0($t2)            # 0 or 1
-    beq  $t3, $zero, draw_blk
-    addi $t3, $s3, 0            # alive: white
-draw_blk:
-    sll  $t4, $t0, 11           # row * 2048 (4 pixel rows of 512 bytes)
-    sll  $t5, $t1, 4            # column * 16 (4 pixels of 4 bytes)
+    addi $t9, $zero, 0          # dead: black
+    beq  $t3, $zero, draw_paint
+    addi $t9, $s3, 0            # alive: white
+draw_paint:
+    jal  paint_cell
+    addi $t8, $t8, 1
+    addi $t5, $zero, 768
+    bne  $t8, $t5, draw_loop
+    jr   $k1
+
+# ---- cursor_paint: paint the cursor cell (a1) red if a3 = 1, else its real color ----
+# Does nothing when there is no cursor (a1 = -1). Uses t4-t6, t8, t9.
+cursor_paint:
+    slt  $t6, $a1, $zero
+    bne  $t6, $zero, cp_none
+    sll  $t6, $a1, 2
+    add  $t6, $t6, $s1
+    lw   $t6, 0($t6)            # 0 or 1
+    addi $t9, $zero, 0          # dead: black
+    beq  $t6, $zero, cp_blink
+    addi $t9, $s3, 0            # alive: white
+cp_blink:
+    beq  $a3, $zero, cp_paint
+    lui  $t9, 0x00FF            # cursor: red 0x00FF0000
+cp_paint:
+    addi $t8, $a1, 0
+    j    paint_cell             # paint_cell returns straight to our caller
+cp_none:
+    jr   $ra
+
+# ---- paint_cell: fill cell t8 (row*32 + column) with color t9. Uses t4, t5 ----
+paint_cell:
+    srl  $t4, $t8, 5
+    sll  $t4, $t4, 11           # row * 2048 (4 pixel rows of 512 bytes)
+    andi $t5, $t8, 31
+    sll  $t5, $t5, 4            # column * 16 (4 pixels of 4 bytes)
     add  $t4, $t4, $t5
     add  $t4, $t4, $s0
-    sw   $t3, 0($t4)
-    sw   $t3, 4($t4)
-    sw   $t3, 8($t4)
-    sw   $t3, 12($t4)
-    sw   $t3, 512($t4)
-    sw   $t3, 516($t4)
-    sw   $t3, 520($t4)
-    sw   $t3, 524($t4)
-    sw   $t3, 1024($t4)
-    sw   $t3, 1028($t4)
-    sw   $t3, 1032($t4)
-    sw   $t3, 1036($t4)
-    sw   $t3, 1536($t4)
-    sw   $t3, 1540($t4)
-    sw   $t3, 1544($t4)
-    sw   $t3, 1548($t4)
-    addi $t1, $t1, 1
-    addi $t5, $zero, 32
-    bne  $t1, $t5, draw_col
-    addi $t0, $t0, 1
-    addi $t5, $zero, 24
-    bne  $t0, $t5, draw_row
+    sw   $t9, 0($t4)
+    sw   $t9, 4($t4)
+    sw   $t9, 8($t4)
+    sw   $t9, 12($t4)
+    sw   $t9, 512($t4)
+    sw   $t9, 516($t4)
+    sw   $t9, 520($t4)
+    sw   $t9, 524($t4)
+    sw   $t9, 1024($t4)
+    sw   $t9, 1028($t4)
+    sw   $t9, 1032($t4)
+    sw   $t9, 1036($t4)
+    sw   $t9, 1536($t4)
+    sw   $t9, 1540($t4)
+    sw   $t9, 1544($t4)
+    sw   $t9, 1548($t4)
     jr   $ra
 
 # ---- load_pattern: clear both buffers, then fill the current one (a0 = pattern) ----
