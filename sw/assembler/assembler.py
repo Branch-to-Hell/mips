@@ -278,7 +278,7 @@ def encode(mn, ops, pc, labels):
         check_operands(ops, 1, mn)
         label = check_label(ops[0], labels)
         op = info['op']
-        target = (label - TEXT_BASE) // 4 #calculate the target address for the jump instruction
+        target = (label >> 2) & 0x3FFFFFF #calculate the target address for the jump instruction
         return f"{op}{DecBinary(target, 26)}"
 
     raise ValueError(f"unsupported instruction type '{info['type']}'")
