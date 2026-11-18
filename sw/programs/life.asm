@@ -8,7 +8,7 @@
 # Keys (they stand in for the board's switches/keys until the real MMIO is wired):
 #   SPACE = KEY1 run/pause     r = KEY0 reset (reload the current pattern)
 #   1..8  = speed (8 fastest)  s = one step (only while paused)
-#   g = glider   n = random   e = empty      (pattern select)
+#   g = glider   p = R-pentomino   n = random   e = empty   (pattern select)
 # Starts paused with a glider.
 .data
 buf_a: .space 3072              # 32 x 24 words
@@ -25,7 +25,7 @@ main:
     addi $s5, $zero, 5          # s5 = speed 1..8
     addi $s6, $zero, 1          # s6 = free-running counter (random seed)
     addi $s7, $zero, 0          # s7 = 0 paused, 1 running
-    addi $a0, $zero, 0          # a0 = pattern: 0 glider, 1 random, 2 empty
+    addi $a0, $zero, 0          # a0 = pattern: 0 glider, 1 random, 2 empty, 3 R-pentomino
     jal  load_pattern
     jal  draw
 
@@ -48,8 +48,15 @@ key_r:
     j    tick
 key_g:
     addi $t2, $zero, 0x67       # 'g'
-    bne  $t1, $t2, key_n
+    bne  $t1, $t2, key_p
     addi $a0, $zero, 0
+    jal  load_pattern
+    jal  draw
+    j    tick
+key_p:
+    addi $t2, $zero, 0x70       # 'p'
+    bne  $t1, $t2, key_n
+    addi $a0, $zero, 3
     jal  load_pattern
     jal  draw
     j    tick
@@ -220,6 +227,8 @@ lp_clear:
     beq  $a0, $zero, lp_glider
     addi $t0, $zero, 1
     beq  $a0, $t0, lp_random
+    addi $t0, $zero, 3
+    beq  $a0, $t0, lp_rpent
     jr   $ra                    # 2 = empty board
 lp_glider:
     addi $t0, $zero, 1
@@ -229,16 +238,25 @@ lp_glider:
     sw   $t0, 392($s1)          # row 3, col 2
     sw   $t0, 396($s1)          # row 3, col 3
     jr   $ra
+lp_rpent:                       # R-pentomino in the centre:  .XX / XX. / .X.
+    addi $t0, $zero, 1          # (a Gosper gun is 36 columns wide and doesn't fit in 32)
+    sw   $t0, 1340($s1)         # row 10, col 15
+    sw   $t0, 1344($s1)         # row 10, col 16
+    sw   $t0, 1464($s1)         # row 11, col 14
+    sw   $t0, 1468($s1)         # row 11, col 15
+    sw   $t0, 1596($s1)         # row 12, col 15
+    jr   $ra
 lp_random:
-    addi $t4, $s6, 12345        # seed from the polling counter
+    andi $t4, $s6, 0xFFFF       # seed from the polling counter, kept below 2^16
     addi $t0, $zero, 0
     addi $t1, $zero, 768
     addi $t5, $zero, 1
 lp_rand_loop:
     sll  $t2, $t4, 10
     add  $t4, $t4, $t2
-    addi $t4, $t4, 12345        # x = x * 1025 + 12345
-    srl  $t2, $t4, 16
+    addi $t4, $t4, 12345        # x = x * 1025 + 12345 (x < 2^16, so add can't overflow)
+    andi $t4, $t4, 0xFFFF       # x = x mod 2^16
+    srl  $t2, $t4, 14           # top 2 bits of x
     andi $t2, $t2, 3
     bne  $t2, $zero, lp_rand_next   # about 1 cell in 4 is alive
     sll  $t3, $t0, 2
