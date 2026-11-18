@@ -1,7 +1,9 @@
 /* Top level for PLT-3 / LIFE-5: Game of Life on the board with the single-cycle CPU
 Runs hw/mem/life_board.hex (sw/programs/life_board.asm):
-    KEY1 = run/pause, KEY0 = load the pattern chosen with SW5-4,
-    SW3-0 = speed (15 fastest), LEDR0 = running, HEX = generation
+    KEY1 = run/pause, LEDR0 = running, HEX = generation
+    running: KEY0 = load the pattern chosen with SW5-4, SW3-0 = speed (15 fastest)
+    paused (edit mode, LIFE-3): SW4-0 = cursor column, SW9-5 = cursor row (24-31 hide it),
+        the cursor blinks red, KEY0 = toggle the cell under the cursor
 Both keys go to software, so reset comes from power-up (and the PLL lock)
 */
 module top_life (
