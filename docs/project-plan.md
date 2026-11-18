@@ -160,7 +160,7 @@ Everyone has this ready before picking up a task. Details of each tool's configu
 | ID | Task | Owner | Pri | Sprint | Done when |
 |---|---|---|---|---|---|
 | LIFE-1 | v0 in MARS: 32×24 board (4×4-pixel cells on 128×96), two buffers, the 4 rules, wrap-around edges | Yocelyn | P0 | S1 | Gliders move correctly in MARS's Bitmap Display |
-| LIFE-2 | Run mode: KEY1 run/pause, SW0–3 speed, SW4–5 pattern (gliders, gun, random, empty), KEY0 reset | Yocelyn | P0 | S1 | Works in MARS with the keyboard/MMIO simulator |
+| LIFE-2 | Run mode: KEY1 run/pause, SW0–3 speed, SW4–5 pattern (gliders, R-pentomino, random, empty; a Gosper gun is 36 columns and does not fit in 32), KEY0 reset | Yocelyn | P0 | S1 | Works in MARS with the keyboard/MMIO simulator |
 | LIFE-3 | Edit mode (paused): SW0–4 column, SW5–9 row, blinking cursor, KEY0 toggles the cell | Yocelyn | P0 | S2 | Draw a pattern in pause and watch it evolve |
 | LIFE-4 | Outputs: generation number on HEX, live-cell bar on LEDs | Yocelyn | P0 | S2 | Values update every generation |
 | LIFE-5 | Game of Life on the board with the **single-cycle** CPU (**checkpoint Nov 18**) | Ariel + Yocelyn | P0 | S2 | Runs on the monitor, controls respond |
