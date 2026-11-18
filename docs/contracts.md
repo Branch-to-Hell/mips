@@ -92,3 +92,4 @@ Both are dual-port RAMs: the CPU writes, the VGA reads.
 - **Quartus (MAX 10):** configuration mode *"Single Uncompressed Image with Memory Initialization"* (required for `.mif` files).
 - **Instruction RAM:** enable *In-System Memory Content Editor* to load programs without recompiling.
 - **GCC:** `-march=mips1 -msoft-float -mno-abicalls -G0 -EL` (little-endian; confirm endianness at kickoff).
+- **Website:** [Astro Starlight](https://starlight.astro.build) in `web/`. One Markdown page per topic in `web/src/content/docs/`; the sidebar is set in `web/astro.config.mjs`. Run `npm run build` from `web/` before opening a PR (it must pass). Vercel deploys with **Root Directory = `web`**: production from `main`, a preview URL for each PR.

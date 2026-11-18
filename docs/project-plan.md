@@ -104,7 +104,7 @@ Everyone has this ready before picking up a task. Details of each tool's configu
 | ModelSim – Intel FPGA Starter Edition 20.1 | Everyone | Same version as Quartus |
 | Java + MARS 4.5 | Everyone | Memory Configuration **Default**, Delayed branching **off** |
 | Git + access to `Branch-to-Hell/mips` | Everyone | Git is used from Windows only |
-| Node.js (LTS) | Everyone | Runs the website |
+| Node.js (LTS) | Everyone | Runs the website (Astro Starlight). From `web/`: `npm install` once, then `npm run dev` |
 | Python 3 (3.10 or newer) | Everyone | Runs our assembler and the tools in `sw/tools/` (reference simulator, trace comparison, converters). From Windows: `python sw/assembler/assembler.py <file>.asm`. `pip install pillow` only for `img2fb.py` with images |
 | WSL (Ubuntu) + Verilator + `gcc-mipsel-linux-gnu` | Everyone | Used only for Verilator and GCC, from the repo folder (`wsl --cd .`) |
 | Memory map and MMIO registers | — | Decided in `contracts.md` |

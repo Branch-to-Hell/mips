@@ -1,0 +1,45 @@
+---
+title: MIPS on the DE10-Lite
+description: A pipelined MIPS processor in Verilog, running Conway's Game of Life and Doom on an FPGA.
+template: splash
+hero:
+  tagline: A pipelined MIPS processor in Verilog, with our own assembler, running Conway's Game of Life and Doom on the DE10-Lite.
+  actions:
+    - text: The CPU
+      link: /cpu/
+      icon: right-arrow
+    - text: GitHub
+      link: https://github.com/Branch-to-Hell/mips
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## The project
+
+<CardGrid>
+	<Card title="CPU" icon="setting">
+		5-stage pipelined MIPS with a hazard detection unit and one branch delay slot.
+		[Read more](/cpu/)
+	</Card>
+	<Card title="Assembler" icon="document">
+		Our own assembler turns MIPS assembly into memory images for the board.
+		[Read more](/assembler/)
+	</Card>
+	<Card title="Game of Life" icon="puzzle">
+		Conway's Game of Life on VGA, controlled with the switches and keys.
+		[Read more](/game-of-life/)
+	</Card>
+	<Card title="Doom" icon="rocket">
+		The original Doom, compiled with GCC, running on our CPU.
+		[Read more](/doom/)
+	</Card>
+</CardGrid>
+
+## Team
+
+- Ariel: FPGA platform
+- Yocelyn: software and website
+- Uriel: assembler and toolchain
+- Victor: CPU core
