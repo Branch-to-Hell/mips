@@ -31,6 +31,7 @@ vsim.wlf
 *.wlf
 modelsim.ini
 *.vstf
+hw/quartus/simulation/
 
 # ---- Node / web ----
 node_modules/
