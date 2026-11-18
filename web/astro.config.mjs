@@ -4,6 +4,7 @@ import starlight from '@astrojs/starlight';
 
 // https://astro.build/config
 export default defineConfig({
+	site: 'https://mips-web.vercel.app',
 	integrations: [
 		starlight({
 			title: 'MIPS on the DE10-Lite',

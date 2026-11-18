@@ -1,5 +1,7 @@
 # Website
 
+Live at https://mips-web.vercel.app
+
 Report website for the project, built with [Astro Starlight](https://starlight.astro.build) and deployed on Vercel (Root Directory: `web`).
 
 ```powershell
