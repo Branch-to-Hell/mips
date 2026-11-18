@@ -58,7 +58,7 @@ Example: Victor takes the issue **#12 "I/J control unit"**.
 | An assembly program | `sw/programs/` | `life.asm`, `test_branches.asm` |
 | Reference simulator, trace scripts, converters | `sw/tools/` | `ref_sim.py`, `trace_diff.py` |
 | Doom port (C) | `sw/doom/` | `doomgeneric_mips.c`, `linker.ld`, `crt0.S` |
-| Website code or content | `web/` | — |
+| A website page | `web/src/content/docs/` | `cpu.md`, `game-of-life.md` |
 | Docs, lab checklists | `docs/` | `docs/lab/2026-11-18.md` |
 
 **Reports are not stored in the repo.** Report drafts, task paragraphs and report images are kept outside GitHub; `docs/report/` is ignored by git.
