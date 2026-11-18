@@ -15,6 +15,8 @@ module mips_cpu #(
 
 // Data wires
 wire [31:0] PC_out, PC_next, PC_fetch, Instruction;
+wire [31:0] PC_plus4, BranchTarget, JumpTarget;
+wire BranchTaken;
 wire [31:0] DR1, DR2, ALUResult;
 wire [3:0] ALUctl;
 wire Zero;
@@ -25,20 +27,29 @@ wire ZeroExtend;
 
 // Control signals
 wire RegDst, ALUSrc, MemtoReg, RegWrite, MemRead, MemWrite, Branch;
+wire BranchNE, Jump, JumpReg, Link;
 wire [1:0] ALUOp;
 
 // R-type writes rd; I-type writes rt.
-assign WriteReg = RegDst? Instruction[15:11]: Instruction[20:16];
+assign WriteReg = Link ? 5'd31 : (RegDst ? Instruction[15:11] : Instruction[20:16]);
 // ANDI and ORI need zero extension.
 assign ZeroExtend = (Instruction[31:26] == 6'b001100) ||(Instruction[31:26] == 6'b001101);
 assign ExtendedImm = ZeroExtend? {16'b0, Instruction[15:0]}: {{16{Instruction[15]}}, Instruction[15:0]};
 // Select the ALU's second operand.
 assign ALU_B = ALUSrc ? ExtendedImm : DR2;
-assign WriteData = MemtoReg ? MemReadData : ALUResult;
+// CPU-3 single-cycle has no delay slot: jal returns to PC + 4.
+// CPU-6 will introduce the pipeline delay slot and PC + 8 link value.
+assign WriteData = Link ? PC_plus4 : (MemtoReg ? MemReadData : ALUResult);
 
 // 1. Fetch the instruction
 pc pc_reg(.clk(clk), .reset(reset), .PC_next(PC_next), .PC_out(PC_out));
-adder add4(.A(PC_out), .B(32'd4), .R(PC_next));
+adder add4(.A(PC_out), .B(32'd4), .R(PC_plus4));
+assign BranchTarget = PC_plus4 + (ExtendedImm << 2);
+assign JumpTarget = {PC_plus4[31:28], Instruction[25:0], 2'b00};
+assign BranchTaken = Branch && (BranchNE ? !Zero : Zero);
+assign PC_next = JumpReg ? DR1 :
+                 Jump ? JumpTarget :
+                 BranchTaken ? BranchTarget : PC_plus4;
 // the instruction memory gets the same value as the PC, including the reset value
 assign PC_fetch = reset ? 32'h0040_0000 : PC_next;
 instruction_memory #(.INIT_FILE(IMEM_INIT)) im(.clk(clk), .Address(PC_fetch), .Instruction(Instruction));
@@ -46,6 +57,8 @@ instruction_memory #(.INIT_FILE(IMEM_INIT)) im(.clk(clk), .Address(PC_fetch), .I
 // 2. Decide what to do
 control_unit cu(
 	.opcode(Instruction[31:26]),
+	.funct(Instruction[5:0]),
+	.BranchNE(BranchNE), .Jump(Jump), .JumpReg(JumpReg), .Link(Link),
 	.RegDst(RegDst), .ALUSrc(ALUSrc), .MemtoReg(MemtoReg),
 	.RegWrite(RegWrite), .MemRead(MemRead), .MemWrite(MemWrite),
 	.Branch(Branch), .ALUOp(ALUOp)
