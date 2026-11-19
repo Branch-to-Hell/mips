@@ -1,3 +1,8 @@
+/* No RAM inference in this module: with 3 read ports (DR3 for the HEX debug view, PLT-4)
+Quartus replicates the array and the copies lose ramstyle = "logic", so it puts the
+registers in M9K again and the instruction memory banks 0-1 end up as logic
+*/
+(* altera_attribute = "-name AUTO_RAM_RECOGNITION OFF" *)
 module register_file #(
 	parameter INIT_FILE = ""  // binary file with initial values (simulation tests only)
 )(
