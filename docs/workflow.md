@@ -17,9 +17,11 @@ Max 2 cards in progress per person. Labels: `hw` `sw` `web` `docs` `lab`, `doom`
 
 ## Git
 - `main` is protected: changes only through PRs.
-- One branch per issue: `feat/<issue>-short-name` (e.g. `feat/12-control-unit`).
+- One branch per task, always created from an up-to-date `main` (never from another feature branch). Name it by the kind of change:
+  - `feat/<issue>-short-name` for code, hardware or website work (e.g. `feat/12-control-unit`).
+  - `docs/short-name` for changes that only touch documentation (e.g. `docs/ai-usage-and-web-reports`).
 - Every PR has evidence (ModelSim screenshot, MARS run, or a photo of the board).
-- Nobody merges their own PR. Reviews: Victor ↔ Ariel, Uriel ↔ Yocelyn. Ariel gives final approval.
+- Ariel checks every PR before merging it, and only Ariel merges.
 
 ## Step by step: from issue to Done
 Example: Victor takes the issue **#12 "I/J control unit"**.
@@ -27,10 +29,10 @@ Example: Victor takes the issue **#12 "I/J control unit"**.
 1. **Pick the card.** On the board, move #12 from *To do* to *In progress* and assign it to yourself.
 2. **Create the branch** from an up-to-date `main`:
    ```bash
-   git switch main
-   git pull
-   git switch -c feat/12-control-unit
+   git fetch origin
+   git switch --no-track -c feat/12-control-unit origin/main
    ```
+   (`--no-track` keeps the new branch from tracking `main`; the first `git push -u` links it to its own remote branch.)
 3. **Work in the right folder** (see the table below):
    - Module → `hw/rtl/control_unit.v`
    - Testbench → `hw/sim/control_unit_tb.v` (+ `hw/sim/control_unit.do` if needed)
@@ -42,10 +44,9 @@ Example: Victor takes the issue **#12 "I/J control unit"**.
    git commit -m "Add I/J decoding to control unit (#12)"
    git push -u origin feat/12-control-unit
    ```
-6. **Open a PR** to `main`. The template asks for the evidence and the DoD checklist. Write `Closes #12` so the issue closes on merge.
-7. **Move the card to *In review*** and add your reviewer in the PR's *Reviewers* field (GitHub notifies them).
-8. **Review:** the reviewer checks it and approves or asks for changes. Ariel gives the final approval and merges.
-9. If it touches hardware and still needs the board, the card goes to **Needs lab** until it's tested; otherwise to **Done**.
+6. **Open a PR** to `main` using the template: what the PR does, `Closes #12` (so the issue closes on merge) and the evidence.
+7. **Move the card to *In review*.** Ariel checks the PR, asks for changes if needed, and merges it.
+8. If it touches hardware and still needs the board, the card goes to **Needs lab** until it's tested; otherwise to **Done**.
 
 ## Where each kind of file goes
 | You're making… | Put it in | Name example |
@@ -61,7 +62,7 @@ Example: Victor takes the issue **#12 "I/J control unit"**.
 | A website page | `web/src/content/docs/` | `cpu.md`, `game-of-life.md` |
 | Docs, lab checklists | `docs/` | `docs/lab/2026-11-18.md` |
 
-**Reports are not stored in the repo.** Report drafts, task paragraphs and report images are kept outside GitHub; `docs/report/` is ignored by git.
+**The report lives on the website.** When the project is finished, we evaluate it with AI's help and write every section of the report as pages in `web/src/content/docs/`.
 
 ## Naming
 - File and folder names in **lowercase**, words separated by `_` (Verilog) or `-` (folders/web).
@@ -69,13 +70,12 @@ Example: Victor takes the issue **#12 "I/J control unit"**.
 - English names everywhere.
 
 ## Using AI
-Use it wherever it saves time (Verilog, tests, tools, C, docs). Ask for the **test together with the module**, give it `contracts.md` as context, and say in the PR what was generated and how you verified it. Generated isn't done until a test proves it works.
+Use it wherever it saves time (Verilog, tests, tools, C, docs). Ask for the **test together with the module**, and give it `contracts.md` as context. Generated isn't done until a test proves it works.
 
 ## Definition of Done
 1. Simulation passes.
-2. PR reviewed and merged.
+2. PR checked by Ariel and merged.
 3. The author can explain it in 2 minutes without notes (we use AI consciously).
-4. One paragraph for the report (outside the repo).
 
 ## Lab rules
 - Nothing goes to the lab without passing simulation first.
