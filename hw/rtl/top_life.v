@@ -4,6 +4,8 @@ Runs hw/mem/life_board.hex (sw/programs/life_board.asm):
     running: KEY0 = load the pattern chosen with SW5-4, SW3-0 = speed (15 fastest)
     paused (edit mode, LIFE-3): SW4-0 = cursor column, SW9-5 = cursor row (24-31 hide it),
         the cursor blinks red, KEY0 = toggle the cell under the cursor
+SW9 up = HEX debug view (PLT-4): SW4-0 = register, SW5 = half (0 = 15:0, 1 = 31:16),
+    HEX5-4 = register number in decimal; the program keeps reading the switches
 Both keys go to software, so reset comes from power-up (and the PLL lock)
 */
 module top_life (
