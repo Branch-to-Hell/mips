@@ -23,7 +23,7 @@ integer i, errors = 0;
 wire [31:0] mem_addr, mem_wdata, mem_rdata, dm_rdata, mmio_rdata;
 wire mem_we, mem_re;
 
-mips_cpu #(.IMEM_INIT("../mem/test_mmio.hex")) dut (
+mips_cpu #(.IMEM_INIT("../mem/test_mmio")) dut (
     .clk(clk), .reset(reset),
     .mem_addr(mem_addr), .mem_wdata(mem_wdata),
     .mem_we(mem_we), .mem_re(mem_re), .mem_rdata(mem_rdata)

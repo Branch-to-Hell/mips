@@ -6,7 +6,7 @@ reg clk, reset;
 integer errors = 0;
 
 mips_cpu #(
-    .IMEM_INIT("../mem/test_rtype.hex"),
+    .IMEM_INIT("../mem/test_rtype"),
     .REGS_INIT("rtype_regs.bin")
 ) dut(
     .clk(clk), .reset(reset),
