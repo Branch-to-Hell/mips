@@ -109,7 +109,7 @@ def first_pass(lines):
             label = label.strip()
             if label in labels:#check if the label is already defined
                 raise ValueError(
-                    f"label repeat '{label}'"
+                    f"line {line_number}: duplicate label '{label}'"
                 )
             if section == "text":#check if the label is in the text section
                 labels[label] = pc
@@ -121,7 +121,11 @@ def first_pass(lines):
         parts = line.split(None, 1) 
         word = parts[0].lower()
         rest = parts[1] if len(parts) > 1 else "" # get the rest of the line after the first word
-
+        ops = (
+                        [x.strip() for x in rest.split(",")]
+                        if rest
+                        else []
+                    )
         if word == ".text":
             section = "text"
             continue
@@ -131,7 +135,7 @@ def first_pass(lines):
             continue
         if word in [".globl", ".align"]:
             continue
-
+        
         if section == "data":
             if word == ".word":
                 values = rest.split(",")
@@ -148,20 +152,50 @@ def first_pass(lines):
             else:
 
                 raise ValueError(
-                    f"directive not supported '{word}'"
+                    f"line {line_number}: directive not supported '{word}'"
                 )
 
         else:
+            if word == "move":
+                # Pseudoinstruction: convert to add with $zero as source register.
+                check_operands(ops, 2, "move")
+                rd = ops[0]
+                rs = ops[1]
+                text.append(("add", [rd, rs, "$zero"], pc, line_number))
+                pc += 4
+                continue
 
-            ops = (
-                [x.strip() for x in rest.split(",")]
-                if rest
-                else []
-            )
-            text.append(
-                (word, ops, pc,line_number)
-            )
+            if word == "li":
+                # Load immediate using addi or lui/ori.
+                check_operands(ops, 2, "li")
+                rt = ops[0]
+                value = check_immediate(ops[1])
+                if -32768 <= value <= 32767:
+                    text.append(("addi", [rt, "$zero", str(value)], pc, line_number))
+                    pc += 4
+                else:
+                    value &= 0xFFFFFFFF
+                    upper = (value >> 16) & 0xFFFF
+                    lower = value & 0xFFFF
+                    text.append(("lui", [rt, str(upper)], pc, line_number))
+                    pc += 4
+                    text.append(("ori", [rt, rt, str(lower)], pc, line_number))
+                    pc += 4
+                continue
+
+            if word == "la":
+                check_operands(ops, 2, "la")
+                rt = ops[0]
+                label = ops[1]
+                text.append(("la", [rt, label], pc, line_number))
+                pc += 8
+                continue
+
+            text.append((word, ops, pc, line_number))
             pc += 4
+            if word in ["beq", "bne", "j", "jal", "jr"]:
+                text.append(("nop", [], pc, line_number))
+                pc += 4
 
     return labels, text, data
 
@@ -222,8 +256,7 @@ def encode(mn, ops, pc, labels):
             register = register.replace(")", "")
 
             rs = check_register(register)
-            offset = check_range(
-            check_immediate(offset),-32768,32767,"offset")
+            offset = check_range(check_immediate(offset),-32768,32767,"offset")
 
             return f"{op}{DecBinary(rs,5)}{DecBinary(rt,5)}{DecBinary(offset,16)}"
         elif mn in ['beq', 'bne']:#check if the instruction is of type beq or bne
@@ -278,7 +311,7 @@ def encode(mn, ops, pc, labels):
         check_operands(ops, 1, mn)
         label = check_label(ops[0], labels)
         op = info['op']
-        target = (label >> 2) & 0x3FFFFFF #calculate the target address for the jump instruction
+        target = (label >> 2) & 0x3FFFFFF  #calculate the target address for the jump instruction
         return f"{op}{DecBinary(target, 26)}"
 
     raise ValueError(f"unsupported instruction type '{info['type']}'")
@@ -290,6 +323,36 @@ def second_pass(text, labels):
     for mn, ops, pc , line_number in text:
 
         try:
+            if mn == "la":
+
+                rt = ops[0]
+                label = ops[1]
+
+                addr = check_label(label, labels)
+
+                upper = (addr >> 16) & 0xFFFF
+                lower = addr & 0xFFFF
+
+                for pseudo_mn, pseudo_ops, pseudo_pc in [
+
+                    ("lui", [rt, str(upper)], pc),
+                    ("ori", [rt, rt, str(lower)], pc + 4)
+
+                ]:
+
+                    binary_code = encode(
+                        pseudo_mn,
+                        pseudo_ops,
+                        pseudo_pc,
+                        labels
+                    )
+
+                    machine_code = int(binary_code, 2)
+
+                    program.append((pseudo_pc, machine_code))
+
+                continue
+
             binary_code = encode(
                 mn,
                 ops,
