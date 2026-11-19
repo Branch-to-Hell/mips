@@ -1,5 +1,5 @@
 /* Top level for PLT-3 / LIFE-5: Game of Life on the board with the single-cycle CPU
-Runs hw/mem/life_board.hex (sw/programs/life_board.asm):
+Runs hw/mem/life_board_b0..b3.hex (sw/programs/life_board.asm):
     KEY1 = run/pause, LEDR0 = running, HEX = generation
     running: KEY0 = load the pattern chosen with SW5-4, SW3-0 = speed (15 fastest)
     paused (edit mode, LIFE-3): SW4-0 = cursor column, SW9-5 = cursor row (24-31 hide it),
@@ -26,7 +26,7 @@ always @(posedge clk25)
     else if (!por[4]) por <= por + 1'b1;
 wire reset = !por[4];
 
-life_system #(.IMEM_INIT("../mem/life_board.hex")) sys ( // path from hw/quartus
+life_system #(.IMEM_INIT("../mem/life_board")) sys ( // path from hw/quartus
     .clk(clk25), .reset(reset),
     .SW(SW), .KEY(KEY), .LEDR(LEDR),
     .HEX0(HEX0), .HEX1(HEX1), .HEX2(HEX2), .HEX3(HEX3), .HEX4(HEX4), .HEX5(HEX5),

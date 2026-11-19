@@ -1,5 +1,5 @@
 module mips_cpu #(
-	parameter IMEM_INIT = "",  // program (.hex) for simulation
+	parameter IMEM_INIT = "",  // program image prefix (loads <prefix>_b0..b3.hex, see instruction_memory.v)
 	parameter REGS_INIT = ""   // initial register values (simulation tests only)
 )(
 	input clk,
