@@ -1,9 +1,11 @@
-/* Top level for PLT-7: SDRAM controller on the board (Quartus revision sdram_test)
+/* Top level for PLT-7 / PLT-9: SDRAM controller on the board (Quartus revision sdram_test)
 pll_sdram (25 MHz + shifted DRAM_CLK) -> sdram_sys (Platform Designer: 32-bit bridge +
 Intel SDRAM controller) <- sdram_smoke (writes a pattern, reads it back)
+PLT-9: the whole 64 MB (16M words), about 10 s per run
 The test runs once after reset and again on every KEY0 press
     LEDR0 = test running, LEDR1 = done and passed, LEDR2 = done with errors, LEDR9 = PLL locked
-    HEX = no errors: words tested; errors: count of bad words (SW0 = 1: first bad address)
+    HEX = no errors: KB tested (010000 = 64 MB); errors: count of bad words
+          (SW0 = 1: number of the first bad word = its byte address / 4)
 KEY1 = reset
 */
 module top_sdram_test (
@@ -22,7 +24,7 @@ module top_sdram_test (
     inout [15:0] DRAM_DQ
 );
 
-localparam [23:0] WORDS = 4096;                // 16 KB; PLT-9 tests all 64 MB
+localparam [24:0] WORDS = 25'd16777216;       // PLT-9: all 64 MB (16M words of 32 bits)
 
 wire clk, locked;
 pll_sdram pll (.inclk0(MAX10_CLK1_50), .c0(clk), .c1(DRAM_CLK), .locked(locked));
@@ -90,7 +92,8 @@ sdram_smoke #(.WORDS(WORDS)) test (
 
 assign LEDR = {locked, 6'b0, done && errors != 0, done && errors == 0, busy};
 
-wire [23:0] shown = (errors == 0) ? WORDS : (SW[0] ? first_bad[23:0] : errors);
+wire [23:0] kb_tested = WORDS >> 8;             // words * 4 / 1024
+wire [23:0] shown = (errors == 0) ? kb_tested : (SW[0] ? first_bad[25:2] : errors);
 hex7seg h0 (.value(shown[3:0]),   .seg(HEX0[6:0]));
 hex7seg h1 (.value(shown[7:4]),   .seg(HEX1[6:0]));
 hex7seg h2 (.value(shown[11:8]),  .seg(HEX2[6:0]));
