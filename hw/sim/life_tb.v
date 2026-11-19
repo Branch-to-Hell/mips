@@ -32,7 +32,7 @@ wire [7:0] HEX0, HEX1, HEX2, HEX3, HEX4, HEX5;
 wire [3:0] VGA_R, VGA_G, VGA_B;
 wire VGA_HS, VGA_VS;
 
-life_system #(.IMEM_INIT("../mem/life_board.hex"), .DEBOUNCE_CYCLES(DB)) sys (
+life_system #(.IMEM_INIT("../mem/life_board"), .DEBOUNCE_CYCLES(DB)) sys (
     .clk(clk), .reset(reset), .SW(SW), .KEY(KEY), .LEDR(LEDR),
     .HEX0(HEX0), .HEX1(HEX1), .HEX2(HEX2), .HEX3(HEX3), .HEX4(HEX4), .HEX5(HEX5),
     .VGA_R(VGA_R), .VGA_G(VGA_G), .VGA_B(VGA_B), .VGA_HS(VGA_HS), .VGA_VS(VGA_VS)
@@ -196,7 +196,7 @@ initial begin
     for (i = 0; i < 32; i = i + 1) sys.cpu.rf.registers[i] = 0;  // like the FPGA after power-up
     done_addr = 32'hFFFF_FFFF;
     for (i = 0; i < 4096; i = i + 1)
-        if (sys.cpu.im.mem[i] === GEN_DONE_INSTR) done_addr = 32'h0040_0000 + 4 * i;
+        if (sys.cpu.im.read_word(i) === GEN_DONE_INSTR) done_addr = 32'h0040_0000 + 4 * i;
     if (done_addr == 32'hFFFF_FFFF) $fatal(1, "addi $k0, $k0, 1 not found in the program");
     $display("generation done at %h", done_addr);
 
