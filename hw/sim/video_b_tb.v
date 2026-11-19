@@ -23,7 +23,7 @@ wire [7:0] HEX0, HEX1, HEX2, HEX3, HEX4, HEX5;
 wire [3:0] VGA_R, VGA_G, VGA_B;
 wire VGA_HS, VGA_VS;
 
-life_system #(.IMEM_INIT("../mem/test_mode_b.hex"), .DEBOUNCE_CYCLES(50),
+life_system #(.IMEM_INIT("../mem/test_mode_b"), .DEBOUNCE_CYCLES(50),
               .CYCLES_PER_MS(100), .MODE_B(1)) sys (
     .clk(clk), .reset(reset), .SW(SW), .KEY(KEY), .LEDR(LEDR),
     .HEX0(HEX0), .HEX1(HEX1), .HEX2(HEX2), .HEX3(HEX3), .HEX4(HEX4), .HEX5(HEX5),

@@ -1,5 +1,5 @@
 /* Top level for PLT-6: video mode B on the board (Quartus revision video_b_test)
-life_system with MODE_B = 1, running hw/mem/test_mode_b.hex (sw/programs/test_mode_b.asm):
+life_system with MODE_B = 1, running hw/mem/test_mode_b_b0..b3.hex (sw/programs/test_mode_b.asm):
     moving diagonal color bands, 640x400 with black bars (palette cycling)
     SW0 = 1 stops the cycling, KEY0 = switch mode B / mode A, HEX = palette offset, LEDR0 = mode B
 Both keys go to software, so reset comes from power-up (and the PLL lock)
@@ -24,7 +24,7 @@ always @(posedge clk25)
     else if (!por[4]) por <= por + 1'b1;
 wire reset = !por[4];
 
-life_system #(.IMEM_INIT("../mem/test_mode_b.hex"), .MODE_B(1)) sys ( // path from hw/quartus
+life_system #(.IMEM_INIT("../mem/test_mode_b"), .MODE_B(1)) sys ( // path from hw/quartus
     .clk(clk25), .reset(reset),
     .SW(SW), .KEY(KEY), .LEDR(LEDR),
     .HEX0(HEX0), .HEX1(HEX1), .HEX2(HEX2), .HEX3(HEX3), .HEX4(HEX4), .HEX5(HEX5),
