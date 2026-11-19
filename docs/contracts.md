@@ -85,7 +85,11 @@ Phase 2 adds a `mem_stall` input here (CPU-9).
 The professor asks for **one byte per address** and big-endian fetch: the word is `mem[PC]`, `mem[PC+1]`, `mem[PC+2]`, `mem[PC+3]`, from the most significant byte to the least.
 - Built as **4 byte-lane banks** of 4,096 bytes each: bank *k* holds the bytes at addresses with `addr[1:0] = k`, indexed by `addr[13:2]`.
 - All 4 banks are read in the same cycle and joined as `{bank0, bank1, bank2, bank3}`, so fetch takes one cycle, the same as before.
-- The assembler writes a **byte-per-address image** and, from it, the 4 bank `.mif` files that Quartus loads (TC-13).
+- **Image files** for a program `<name>` (in `hw/mem/`), all with one byte per line, 2 hex digits, LF, no addresses:
+  - `<name>_bytes.hex`: one byte per address, big-endian (the professor's loadable image).
+  - `<name>_b0.hex` … `<name>_b3.hex`: bank *k* = the bytes at addresses with `addr[1:0] = k`; line *i* is the byte of instruction *i*.
+  - `instruction_memory` loads the 4 bank files with `$readmemh` from the prefix in `IMEM_INIT` (e.g. `"../mem/life_board"`), in ModelSim and in Quartus.
+  - The assembler writes them from the ASM (TC-13). Until then, `sw/tools/hex2banks.py` makes them from a word `.hex`.
 
 ### Memory timing
 All memories read on a clock edge, so Quartus can place them in M9K blocks (a combinational read doesn't fit: 16 KB of flip-flops is more than the whole FPGA).
