@@ -4,9 +4,12 @@
 # Chip: ISSI IS42S16320D-7TL, 32M x 16 (64 MB), 4 banks, 13 row bits, 10 column bits
 #
 #   clk (25 MHz, from pll_sdram c0) ──┬── bridge (32-bit, byte addresses, exported "mem")
+#                                     ├── jtag   (JTAG to Avalon Master, PLT-10, no ports)
 #                                     └── sdram (16-bit, exported "wire" to the DRAM_* pins)
 # Platform Designer adds the 32 → 16 width adapter between them, so the CPU side sees
 # 64 MB of 32-bit words with byte enables.
+# PLT-10: bridge and jtag are two masters of sdram.s1 (Platform Designer adds the arbiter).
+# System Console drives jtag over the USB-Blaster to load the WAD (sw/tools/wad_load.tcl).
 
 package require -exact qsys 16.0
 
@@ -53,13 +56,21 @@ set_instance_parameter_value bridge MAX_PENDING_RESPONSES 4
 set_instance_parameter_value bridge PIPELINE_COMMAND 0
 set_instance_parameter_value bridge PIPELINE_RESPONSE 0
 
+# ---- JTAG to Avalon Master (PLT-10): lets System Console read and write the SDRAM ----
+add_instance jtag altera_jtag_avalon_master
+set_instance_parameter_value jtag USE_PLI 0
+
 # ---- Connections ----
 add_connection clk.clk sdram.clk
 add_connection clk.clk bridge.clk
 add_connection clk.clk_reset sdram.reset
 add_connection clk.clk_reset bridge.reset
+add_connection clk.clk jtag.clk
+add_connection clk.clk_reset jtag.clk_reset
 add_connection bridge.m0 sdram.s1
 set_connection_parameter_value bridge.m0/sdram.s1 baseAddress 0x00000000
+add_connection jtag.master sdram.s1
+set_connection_parameter_value jtag.master/sdram.s1 baseAddress 0x00000000
 
 # ---- Exported interfaces ----
 set_interface_property clk EXPORT_OF clk.clk_in

@@ -19,7 +19,8 @@ foreach f [glob $sim/submodules/*.v $sim/submodules/*.sv] {
     vlog -sv -suppress 2583 $f
 }
 vlog $sim/sdram_sys.v ../rtl/sdram_smoke.v sdram_tb.v
-vsim -voptargs=+acc work.sdram_tb
+# altera_mf_ver: altera_std_synchronizer, used by the JTAG master (PLT-10)
+vsim -voptargs=+acc -L altera_mf_ver work.sdram_tb
 
 add wave sim:/sdram_tb/clk
 add wave sim:/sdram_tb/reset

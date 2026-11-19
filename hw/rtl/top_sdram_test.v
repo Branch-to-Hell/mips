@@ -3,7 +3,11 @@ pll_sdram (25 MHz + shifted DRAM_CLK) -> sdram_sys (Platform Designer: 32-bit br
 Intel SDRAM controller) <- sdram_smoke (writes a pattern, reads it back)
 PLT-9: the whole 64 MB (16M words), about 10 s per run
 The test runs once after reset and again on every KEY0 press
-    LEDR0 = test running, LEDR1 = done and passed, LEDR2 = done with errors, LEDR9 = PLL locked
+PLT-10: sdram_sys also has a JTAG to Avalon Master, so System Console can load a file
+(the WAD) into the SDRAM while this design runs (sw/tools/wad_load.tcl). The smoke test
+writes all 64 MB, so SW9 = 1 keeps it from starting: set SW9 before loading the WAD
+    LEDR0 = test running, LEDR1 = done and passed, LEDR2 = done with errors,
+    LEDR8 = SW9 lock on (smoke test will not start), LEDR9 = PLL locked
     HEX = no errors: KB tested (010000 = 64 MB); errors: count of bad words
           (SW0 = 1: number of the first bad word = its byte address / 4)
 KEY1 = reset
@@ -41,13 +45,17 @@ always @(posedge clk)
     else if (!por[4]) por <= por + 1'b1;
 wire reset = !por[4];
 
-// Start once after reset and on every KEY0 press
+// Start once after reset and on every KEY0 press, unless SW9 locks the SDRAM for the WAD
+// (SW9 is a slow manual switch, only gating a start pulse: a 2-flop sync is enough)
+reg [1:0] lock_sync = 0;
 reg key0_prev = 0, after_reset = 1;
 always @(posedge clk) begin
+    lock_sync <= {lock_sync[0], SW[9]};
     key0_prev <= key0;
     after_reset <= reset;
 end
-wire start = (after_reset && !reset) || (key0 && !key0_prev);
+wire lock = lock_sync[1];
+wire start = !lock && ((after_reset && !reset) || (key0 && !key0_prev));
 
 // Avalon-MM between the test and the SDRAM system
 wire [25:0] address;
@@ -90,7 +98,7 @@ sdram_smoke #(.WORDS(WORDS)) test (
     .busy(busy), .done(done), .errors(errors), .first_bad(first_bad)
 );
 
-assign LEDR = {locked, 6'b0, done && errors != 0, done && errors == 0, busy};
+assign LEDR = {locked, lock, 5'b0, done && errors != 0, done && errors == 0, busy};
 
 wire [23:0] kb_tested = WORDS >> 8;             // words * 4 / 1024
 wire [23:0] shown = (errors == 0) ? kb_tested : (SW[0] ? first_bad[25:2] : errors);
