@@ -25,7 +25,7 @@ module life_system #(
 );
 
 // CPU memory bus
-wire [31:0] mem_addr, mem_wdata, mem_rdata, dm_rdata, mmio_rdata, fb_rdata;
+wire [31:0] mem_addr, mem_wdata, mem_rdata, dm_rdata, stack_rdata, mmio_rdata, fb_rdata;
 wire video_mode;
 wire mem_we, mem_re;
 wire [7:0] io_hex0, io_hex1, io_hex2, io_hex3, io_hex4, io_hex5;  // the program's HEX (MMIO)
@@ -40,10 +40,16 @@ mips_cpu #(.IMEM_INIT(IMEM_INIT)) cpu (
     .dbg_sel(SW[4:0]), .dbg_value(dbg_value)
 );
 
-// Data and stack would go here; phase 1 only uses the data region
+// Data: 0x1001_0000 - 0x1001_3FFF (16 KB)
 data_memory dm (
     .clk(clk), .MemRead(mem_re), .MemWrite(mem_we),
     .Address(mem_addr), .WriteData(mem_wdata), .ReadData(dm_rdata)
+);
+
+// Stack (PLT-13): 0x7FFF_E000 - 0x7FFF_EFFF (4 KB); $sp starts at 0x7FFF_EFFC
+data_memory #(.BASE(32'h7FFF_E000), .WORDS(1024)) stack (
+    .clk(clk), .MemRead(mem_re), .MemWrite(mem_we),
+    .Address(mem_addr), .WriteData(mem_wdata), .ReadData(stack_rdata)
 );
 
 mmio #(.DEBOUNCE_CYCLES(DEBOUNCE_CYCLES), .CYCLES_PER_MS(CYCLES_PER_MS)) io (
@@ -137,7 +143,7 @@ assign VGA_HS = show_b ? b_hs : a_hs;
 assign VGA_VS = show_b ? b_vs : a_vs;
 
 // Each device returns 0 when it wasn't read, so the read bus is an OR
-assign mem_rdata = dm_rdata | mmio_rdata | (fb_rd ? fb_rdata : 32'b0)
+assign mem_rdata = dm_rdata | stack_rdata | mmio_rdata | (fb_rd ? fb_rdata : 32'b0)
                  | (fbb_rd ? fbb_rdata : 32'b0) | (pal_rd ? pal_rdata : 32'b0);
 
 endmodule
