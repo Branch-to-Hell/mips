@@ -7,6 +7,7 @@ module register_file #(
 	parameter INIT_FILE = ""  // binary file with initial values (simulation tests only)
 )(
 	input clk,
+	input reset,           // loads $sp = 0x7FFF_EFFC (MARS default, PLT-13)
 	input RegWrite,
 	input [4:0] AR1, AR2, AW,
 	input [31:0] DW,
@@ -25,8 +26,15 @@ assign DR1 = registers[AR1];
 assign DR2 = registers[AR2];
 assign DR3 = registers[AR3];
 
+/* $sp starts at the top of the stack region, like in MARS (contracts.md), so programs
+that push on the stack run unchanged. Only $sp: the other registers have no reset value
+*/
+localparam [31:0] SP_INIT = 32'h7FFF_EFFC;
+
 always @(posedge clk) begin // single-cycle: write at the end of the cycle (data memory reads on negedge)
-    if (RegWrite && AW != 5'd0) // write enabled and the address isn't $zero?
+    if (reset)
+        registers[29] <= SP_INIT;
+    else if (RegWrite && AW != 5'd0) // write enabled and the address isn't $zero?
 		registers[AW] <= DW; // store data DW in register number AW
 end
 
