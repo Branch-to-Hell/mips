@@ -49,7 +49,7 @@ What stays human:
 Practical rules:
 - Ask the AI for **the test along with the module**, not just the module.
 - Give it our `contracts.md` as context, so every piece follows the same addresses and rules.
-- In each PR, say briefly what the AI generated and how you verified it.
+- At the end of the project, we use AI to help us evaluate the whole project, and we write every section of the report on the website.
 
 ## 3. Who does what (and where)
 | Person | Focus | Works mainly in |
@@ -59,7 +59,7 @@ Practical rules:
 | **Uriel** | **Toolchain lead.** Our assembler, the reference simulator, trace comparison, GCC toolchain, cross-compiling Doom | `sw/assembler/`, `sw/tools/`, `sw/doom/` (build) |
 | **Yocelyn** | **Software and website lead.** Game of Life, test programs, Doom's platform layer in C, website, report and slides | `sw/programs/`, `sw/doom/`, `web/`, `docs/` |
 
-**Pairs:** Ariel + Victor (hardware), Uriel + Yocelyn (software). Pairs review each other's PRs; Ariel gives the final approval.
+**Pairs:** Ariel + Victor (hardware), Uriel + Yocelyn (software). Ariel checks every PR before merging it.
 
 ### Who depends on whom
 | Needs | From | What |
@@ -68,7 +68,6 @@ Practical rules:
 | Ariel | Victor | The CPU module with the agreed ports (including a memory-stall input) |
 | Yocelyn | Ariel | MMIO addresses (switches, keys, LEDs, HEX, timer) and the framebuffer formats |
 | Uriel | Ariel | The memory map, to write the linker script |
-| Everyone | Everyone | One paragraph per finished task for the report |
 
 ## 4. Timeline and checkpoints
 | Sprint | Dates | Goal |
@@ -185,7 +184,7 @@ Everyone has this ready before picking up a task. Details of each tool's configu
 | WEB-2 | Assembler page | Uriel (content) + Yocelyn | P0 | S2 | Explains usage and encoding |
 | WEB-3 | CPU page: ISA table, datapath and pipeline diagrams, hazard unit | Victor (content) + Yocelyn | P0 | S3 | Published |
 | WEB-4 | Game of Life and Doom pages, with screenshots | Yocelyn | P0 | S3 | Published |
-| WEB-5 | Report draft of your own section | Everyone | P0 | S2–S3 | Draft shared with the team (not in the repo) |
+| WEB-5 | Final evaluation of the project with AI's help, and every report section written on the website | Everyone | P0 | S3 | All report sections published on the site |
 | DEMO-1 | Freeze the demo build: tag the commit and keep the `.sof` + `.mif` files used in the validations (GitHub Release + USB) | Ariel | P0 | S3 (Wed Nov 25) | The exact files we'll use on Nov 30 are tagged and backed up |
 | DEMO-2 | 5-minute slides and script | Yocelyn | P0 | S3 | Reviewed by the team |
 | DEMO-3 | Full rehearsal | Everyone | P0 | S3 (Fri Nov 27) | Done once end to end |
