@@ -3,6 +3,7 @@
 module cpu3_program_tb;
 reg clk = 0, reset = 1;
 reg [1023:0] program_file;
+reg [31:0] program_words [0:4095];
 wire [31:0] mem_addr, mem_wdata, mem_rdata;
 wire mem_we, mem_re;
 reg [31:0] leds = 0;
@@ -16,8 +17,10 @@ initial begin
     if (!$value$plusargs("program=%s", program_file)) $fatal(1, "Missing +program=path.hex");
     #1;
     for (i = 0; i < 32; i = i + 1) dut.rf.registers[i] = 0;
-    for (i = 0; i < 4096; i = i + 1) dut.im.mem[i] = 0;
-    $readmemh(program_file, dut.im.mem);
+    // The program is the assembler's word image; load it word by word into the 4 byte banks.
+    for (i = 0; i < 4096; i = i + 1) program_words[i] = 0;
+    $readmemh(program_file, program_words);
+    for (i = 0; i < 4096; i = i + 1) dut.im.write_word(i, program_words[i]);
     @(posedge clk); #1; reset = 0;
 end
 always @(negedge clk) begin

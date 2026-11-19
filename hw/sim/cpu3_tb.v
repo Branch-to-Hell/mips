@@ -28,7 +28,7 @@ task check_transfer;
         dut.pc_reg.PC_out = pc_value;
         dut.im.Instruction = instruction;
         // A recognizable fetched instruction, not executed in this fixture.
-        dut.im.mem[next_pc[13:2]] = 32'h2015002a;
+        dut.im.write_word(next_pc[13:2], 32'h2015002a);
         #1;
         if (mem_we !== 0 || mem_re !== 0 || dut.RegWrite !== link)
             $fatal(1, "Unexpected side effect for instruction %h", instruction);
@@ -49,7 +49,7 @@ endtask
 
 initial begin
     #1;
-    for (i = 0; i < 4096; i = i + 1) dut.im.mem[i] = 0;
+    for (i = 0; i < 4096; i = i + 1) dut.im.write_word(i, 0);
     // beq/bne: taken and not taken, negative values, backward/zero/extreme offsets.
     check_transfer({6'h04,5'd8,5'd9,16'd2},32'h00400020,7,7,32'h0040002c,0);
     check_transfer({6'h04,5'd8,5'd9,16'd2},32'h00400020,7,8,32'h00400024,0);
@@ -72,7 +72,7 @@ initial begin
     @(negedge clk); #1;
     dut.im.Instruction = {6'h03,26'h0100020};
     dut.rf.registers[31] = 32'hcafebabe;
-    dut.im.mem[0] = 32'h2015002a;
+    dut.im.write_word(0, 32'h2015002a);
     reset = 1;
     @(posedge clk); #1;
     if (dut.PC_out !== 32'h00400000 || dut.Instruction !== 32'h2015002a ||

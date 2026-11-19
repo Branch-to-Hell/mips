@@ -26,7 +26,7 @@ reg [31:0] expected [0:31];
 task step(input [5:0] op, input [4:0] rs, rt, input [15:0] imm,
           input [4:0] tgt, input [31:0] exp);
 begin
-    dut.im.mem[n] = {op,rs,rt,imm};
+    dut.im.write_word(n, {op,rs,rt,imm});
     target[n] = tgt;
     expected[n] = exp;
     n=n+1;
@@ -36,7 +36,7 @@ endtask
 initial begin
     #1;
     for(i=0;i<32;i=i+1) dut.rf.registers[i]=0;
-    for(i=0;i<4096;i=i+1) dut.im.mem[i]=0;
+    for(i=0;i<4096;i=i+1) dut.im.write_word(i, 0);
     step(6'h08,0,8,16'hffff,8,32'hffffffff); // addi -1
     step(6'h0c,8,9,16'hffff,9,32'h0000ffff); // andi zero extension
     step(6'h0d,0,10,16'h8000,10,32'h00008000); // ori zero extension

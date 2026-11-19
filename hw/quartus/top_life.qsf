@@ -1,4 +1,4 @@
-# PLT-3 / LIFE-5: Game of Life on the board (top_life, runs hw/mem/life_board.hex)
+# PLT-3 / LIFE-5: Game of Life on the board (top_life, runs hw/mem/life_board_b0..b3.hex)
 
 set_global_assignment -name FAMILY "MAX 10"
 set_global_assignment -name DEVICE 10M50DAF484C7G
@@ -23,6 +23,7 @@ set_global_assignment -name VERILOG_FILE ../rtl/data_memory.v
 set_global_assignment -name VERILOG_FILE ../rtl/mmio.v
 set_global_assignment -name VERILOG_FILE ../rtl/debounce.v
 set_global_assignment -name VERILOG_FILE ../rtl/hex7seg.v
+set_global_assignment -name VERILOG_FILE ../rtl/hex_debug.v
 set_global_assignment -name VERILOG_FILE ../rtl/pll_25.v
 set_global_assignment -name VERILOG_FILE ../rtl/video_mode_a.v
 set_global_assignment -name VERILOG_FILE ../rtl/framebuffer_a.v

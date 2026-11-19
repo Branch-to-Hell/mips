@@ -1,6 +1,9 @@
 /* CPU + data memory + MMIO + framebuffer on one bus (PLT-3)
 Everything top_life needs except the PLL and the power-up reset,
 so the testbench simulates exactly what runs on the board
+HEX debug view (PLT-4): with SW9 up the displays show a CPU register instead of
+the program's HEX: SW4-0 = register, SW5 = half (0 = bits 15:0, 1 = bits 31:16).
+The program still reads all the switches as usual
 MODE_B = 1 adds video mode B (PLT-6) and the VIDEO_MODE switch; top_life leaves it
 off so the Game of Life build doesn't spend 64 KB of M9K on it
 */
@@ -25,11 +28,16 @@ module life_system #(
 wire [31:0] mem_addr, mem_wdata, mem_rdata, dm_rdata, mmio_rdata, fb_rdata;
 wire video_mode;
 wire mem_we, mem_re;
+wire [7:0] io_hex0, io_hex1, io_hex2, io_hex3, io_hex4, io_hex5;  // the program's HEX (MMIO)
+
+// Debug view: the register picked with SW4-0
+wire [31:0] dbg_value;
 
 mips_cpu #(.IMEM_INIT(IMEM_INIT)) cpu (
     .clk(clk), .reset(reset),
     .mem_addr(mem_addr), .mem_wdata(mem_wdata),
-    .mem_we(mem_we), .mem_re(mem_re), .mem_rdata(mem_rdata)
+    .mem_we(mem_we), .mem_re(mem_re), .mem_rdata(mem_rdata),
+    .dbg_sel(SW[4:0]), .dbg_value(dbg_value)
 );
 
 // Data and stack would go here; phase 1 only uses the data region
@@ -42,9 +50,27 @@ mmio #(.DEBOUNCE_CYCLES(DEBOUNCE_CYCLES), .CYCLES_PER_MS(CYCLES_PER_MS)) io (
     .clk(clk), .reset(reset),
     .addr(mem_addr), .wdata(mem_wdata), .we(mem_we), .re(mem_re), .rdata(mmio_rdata),
     .SW(SW), .KEY(KEY), .LEDR(LEDR),
-    .HEX0(HEX0), .HEX1(HEX1), .HEX2(HEX2), .HEX3(HEX3), .HEX4(HEX4), .HEX5(HEX5),
+    .HEX0(io_hex0), .HEX1(io_hex1), .HEX2(io_hex2), .HEX3(io_hex3), .HEX4(io_hex4), .HEX5(io_hex5),
     .video_mode(video_mode)
 );
+
+/* HEX debug view (PLT-4): SW9 up = show the register instead of the program's HEX.
+The switches only drive the displays (no flip-flops), so they need no synchronizing
+*/
+wire [7:0] dbg_hex0, dbg_hex1, dbg_hex2, dbg_hex3, dbg_hex4, dbg_hex5;
+hex_debug dbg (
+    .reg_num(SW[4:0]), .half(SW[5]), .value(dbg_value),
+    .HEX0(dbg_hex0), .HEX1(dbg_hex1), .HEX2(dbg_hex2),
+    .HEX3(dbg_hex3), .HEX4(dbg_hex4), .HEX5(dbg_hex5)
+);
+
+wire debug_view = SW[9];
+assign HEX0 = debug_view ? dbg_hex0 : io_hex0;
+assign HEX1 = debug_view ? dbg_hex1 : io_hex1;
+assign HEX2 = debug_view ? dbg_hex2 : io_hex2;
+assign HEX3 = debug_view ? dbg_hex3 : io_hex3;
+assign HEX4 = debug_view ? dbg_hex4 : io_hex4;
+assign HEX5 = debug_view ? dbg_hex5 : io_hex5;
 
 /* Framebuffer mode A: 0x1004_0000 - 0x1004_BFFF (128x96 words)
 Bits 15:14 = 11 would be 0x1004_C000 and up, outside the 12,288 pixels

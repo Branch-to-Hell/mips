@@ -86,7 +86,11 @@ Phase 2 adds a `mem_stall` input here (CPU-9).
 The professor asks for **one byte per address** and big-endian fetch: the word is `mem[PC]`, `mem[PC+1]`, `mem[PC+2]`, `mem[PC+3]`, from the most significant byte to the least.
 - Built as **4 byte-lane banks** of 4,096 bytes each: bank *k* holds the bytes at addresses with `addr[1:0] = k`, indexed by `addr[13:2]`.
 - All 4 banks are read in the same cycle and joined as `{bank0, bank1, bank2, bank3}`, so fetch takes one cycle, the same as before.
-- The assembler writes a **byte-per-address image** and, from it, the 4 bank `.mif` files that Quartus loads (TC-13).
+- **Image files** for a program `<name>` (in `hw/mem/`), all with one byte per line, 2 hex digits, LF, no addresses:
+  - `<name>_bytes.hex`: one byte per address, big-endian (the professor's loadable image).
+  - `<name>_b0.hex` … `<name>_b3.hex`: bank *k* = the bytes at addresses with `addr[1:0] = k`; line *i* is the byte of instruction *i*.
+  - `instruction_memory` loads the 4 bank files with `$readmemh` from the prefix in `IMEM_INIT` (e.g. `"../mem/life_board"`), in ModelSim and in Quartus.
+  - The assembler writes them from the ASM (TC-13). Until then, `sw/tools/hex2banks.py` makes them from a word `.hex`.
 
 ### Memory timing
 All memories read on a clock edge, so Quartus can place them in M9K blocks (a combinational read doesn't fit: 16 KB of flip-flops is more than the whole FPGA).
@@ -120,7 +124,14 @@ Both are dual-port RAMs: the CPU writes, the VGA reads.
 
 ## Clocks
 - CPU and VGA at **25 MHz** (single clock domain) for phase 1.
-- SDRAM clock from a PLL with phase shift (phase 2).
+- **SDRAM (PLT-7):** the SDRAM controller runs in the **same 25 MHz domain** as the CPU (no clock crossing). `pll_sdram` gives `c0` = 25 MHz (system) and `c1` = 25 MHz shifted **−3 ns**, which goes out on `DRAM_CLK`. `sdram_test.sdc` constrains the SDRAM pins with the chip's datasheet timing; reads have a multicycle of 2 because the controller captures the data one cycle after the SDRAM's edge.
+
+## SDRAM (PLT-7)
+- **Chip:** ISSI IS42S16320D-7, 32M × 16 = 64 MB, 4 banks, 13 row bits, 10 column bits.
+- **Platform Designer system `sdram_sys`** (`hw/quartus/sdram_sys.qsys`, rebuilt by `sdram_sys.tcl`): Intel SDRAM Controller (CAS latency 2, refresh every 7.8125 µs, 100 µs power-up) behind a **32-bit Avalon-MM bridge**. Platform Designer adds the 32 → 16 width adapter, so the master sees 64 MB of 32-bit words.
+- **Interface `mem`** (what the CPU bridge, PLT-8, masters): 26-bit **byte** address (multiple of 4), `read`/`write`, `writedata`/`readdata` 32 bits, `byteenable` 4 bits, `waitrequest` (hold the command while it's 1), `readdatavalid` (read data arrives a few cycles later). One access at a time takes ~6–7 cycles.
+- **Byte order:** Avalon byte lanes are little-endian (byte address A+k = bits 8k+7..8k = `byteenable[k]`). The CPU is big-endian, so the PLT-8 bridge **swaps the 4 bytes** of `writedata`/`readdata` and reverses `byteenable`. Then a file written byte by byte into SDRAM (WAD loading, PLT-10) reads back correctly with `lb`.
+- **Quartus:** revision `sdram_test` (`top_sdram_test`) adds `sdram_sys.qsys` with `QSYS_FILE`, so Quartus generates its HDL during compilation. `hw/sim/sdram.do` generates the simulation HDL (with the controller's memory model) by itself.
 
 ## Tool settings
 - **MARS:** *Settings → Delayed branching* **off**; *Memory Configuration → Default*; Bitmap Display: unit 4×4, display 512 wide, base address `0x10040000 (heap)`.

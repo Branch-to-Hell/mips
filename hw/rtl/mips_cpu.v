@@ -1,5 +1,5 @@
 module mips_cpu #(
-	parameter IMEM_INIT = "",  // program (.hex) for simulation
+	parameter IMEM_INIT = "",  // program image prefix (loads <prefix>_b0..b3.hex, see instruction_memory.v)
 	parameter REGS_INIT = ""   // initial register values (simulation tests only)
 )(
 	input clk,
@@ -10,7 +10,11 @@ module mips_cpu #(
 	output [31:0] mem_wdata,
 	output mem_we,
 	output mem_re,
-	input [31:0] mem_rdata
+	input [31:0] mem_rdata,
+
+	// Debug view (PLT-4): read any register without touching the datapath
+	input [4:0] dbg_sel,
+	output [31:0] dbg_value
 );
 
 // Data wires
@@ -73,7 +77,9 @@ register_file #(.INIT_FILE(REGS_INIT)) rf(
 	.AW(WriteReg), // rd for R-type; rt for I-type
 	.DW(WriteData),
 	.DR1(DR1),
-	.DR2(DR2)
+	.DR2(DR2),
+	.AR3(dbg_sel),
+	.DR3(dbg_value)
 );
 
 // 4. Execute
