@@ -115,13 +115,17 @@ Everyone has this ready before picking up a task. Details of each tool's configu
 | CPU-1 | Bring the R-type single-cycle into `hw/rtl/` with our naming | Victor + Ariel | P0 | S1 | Passes its R-type tests in the new repo |
 | CPU-2 | I-type: `addi andi ori slti lui lw sw` | Victor | P0 | S1 | Each instruction verified in ModelSim |
 | CPU-3 | Branches and jumps: `beq bne j jal jr` | Victor | P0 | S1 | Verified in ModelSim |
-| CPU-4 | Pipeline registers IF/ID, ID/EX, EX/MEM, MEM/WB | Victor | P0 | S2 | Programs with no dependencies run correctly |
+| CPU-4 | Pipeline registers IF/ID, ID/EX, EX/MEM, MEM/WB | Victor | P0 | S2 | Programs with no dependencies run correctly; each register documented (width, enable, reset, valid, update) |
 | CPU-5 | Hazard detection unit (stalls for data and load-use hazards) | Victor | P0 | S2 | Hazard test suite passes with no NOPs in the code |
 | CPU-6 | Branch/jump resolution in ID + 1 delay slot | Victor | P0 | S2 | Delay-slot tests pass |
-| CPU-7 | Full MIPS I integer set: `addu subu addiu sltu sltiu xor xori sra sllv srlv srav lb lbu lh lhu sb sh bltz bgez blez bgtz jalr` | Victor + Ariel | P1 | S2 | Each instruction matches the reference simulator |
+| CPU-7 | Full MIPS I integer set (`addu subu addiu` moved to CPU-11): `sltu sltiu xor xori sra sllv srlv srav lb lbu lh lhu sb sh bltz bgez blez bgtz jalr` | Victor + Ariel | P1 | S2 | Each instruction matches the reference simulator |
 | CPU-8 | `mult multu div divu mfhi mflo mthi mtlo` | Victor | P1 | S2 | Matches the reference simulator |
 | CPU-9 | Memory-stall input (freeze the pipeline while memory isn't ready) | Victor + Ariel | P1 | S2 | CPU runs correctly with a memory that answers in random delays |
 | CPU-10 | Forwarding unit (fewer stalls, faster Doom) | Victor | P1 | S3 | Same tests pass, fewer cycles |
+| CPU-11 | Professor's encodings: `add sub addi` as `0x21 0x23 0x09` (= `addu subu addiu`), old codes still work | Victor | P0 | S2 | Test with both codes passes |
+| CPU-12 | Instruction memory with one byte per address, big-endian (4 byte-lane banks) | Ariel + Victor | P0 | S2 | Testbench shows the 4 bytes and the joined word |
+| CPU-13 | PC reset value = 0 | Victor | P0 | S2 | Tests and Game of Life pass with text base 0 |
+| CPU-14 | Visible halt on invalid or misaligned fetch and data access, with no writes | Ariel + Victor | P0 | S2 | Error code on LEDs/HEX; testbench covers fetch, `lw`, `sw` |
 
 ### Platform
 | ID | Task | Owner | Pri | Sprint | Done when |
@@ -144,7 +148,7 @@ Everyone has this ready before picking up a task. Details of each tool's configu
 |---|---|---|---|---|---|
 | TC-1 | Assembler v1: labels, R/I/J encoding, `.data`, `.mif`/`.hex` output | Uriel | P0 | S1 | Output matches MARS dumps on 3 programs |
 | TC-2 | Assembler v2: pseudo-instructions `li la move nop` + fills every delay slot with `nop` | Uriel | P0 | S2 | MARS programs (delayed branching off) run unchanged on our CPU |
-| TC-3 | Assembler CLI + README | Uriel | P0 | S2 | A teammate uses it without asking |
+| TC-3 | Assembler CLI + README | Uriel | P0 | S2 | A teammate uses it without asking; root README: generate image, load, run, reproduce tests |
 | TC-4 | Self-checking test programs per instruction type (result on LEDs) | Yocelyn | P0 | S1 | One program per instruction group |
 | TC-5 | Hazard and delay-slot test suite | Victor + Yocelyn | P0 | S2 | Covers data, load-use and branch cases |
 | TC-6 | Reference simulator (Python): runs our binaries, prints a trace of every register write | Uriel | P1 | S1–S2 | Matches MARS on the test programs |
@@ -154,6 +158,10 @@ Everyone has this ready before picking up a task. Details of each tool's configu
 | TC-10 | Minimal C library (newlib or picolibc) + `sbrk`/heap | Uriel | P1 | S2 | `malloc`, `memcpy`, `printf`-to-nothing work |
 | TC-11 | C programs pass the trace comparison (**checkpoint Nov 20**) | Uriel + Victor | P1 | S2 | 3 C programs match with zero differences |
 | TC-12 | Professor drill: unseen MARS program → assemble → load → verify | Uriel + Victor | P0 | S3 | Done in under 15 minutes |
+| TC-13 | Assembler v3: professor's encodings, `--text-base`, byte-per-address image + 4 bank `.mif`, listing with instruction text, line diagnostics (`j` region, alignment, duplicate labels) | Uriel | P0 | S2 | Every diagnostic has an example; image regenerates with one command |
+| TC-14 | Big-endian toolchain for Doom (`mips-linux-gnu-gcc -EB`) | Uriel + Ariel | P1 | S2 | C "hello pixels" built with `-EB` runs in simulation |
+| TC-15 | Graded algorithm: professor's approval, pseudocode, register/data map, self-jump end, 3 inputs (one edge case) | Yocelyn | P0 | S2 | Expected vs observed for the 3 inputs |
+| TC-16 | Professor's test coverage and one trace per format (R, I, J) | Yocelyn + Victor | P0 | S3 | Every case on the professor's list, with how to reproduce it |
 
 ### Game of Life (minimum deliverable)
 | ID | Task | Owner | Pri | Sprint | Done when |
@@ -182,10 +190,12 @@ Everyone has this ready before picking up a task. Details of each tool's configu
 |---|---|---|---|---|---|
 | WEB-1 | Site skeleton + first Vercel deploy | Yocelyn / Ariel | P0 | S1 | Live URL |
 | WEB-2 | Assembler page | Uriel (content) + Yocelyn | P0 | S2 | Explains usage and encoding |
-| WEB-3 | CPU page: ISA table, datapath and pipeline diagrams, hazard unit | Victor (content) + Yocelyn | P0 | S3 | Published |
+| WEB-3 | CPU page: ISA table, datapath and pipeline diagrams, hazard unit | Victor (content) + Yocelyn | P0 | S3 | Published, with the 4-byte fetch, when each register loads, and our differences from the spec |
 | WEB-4 | Game of Life and Doom pages, with screenshots | Yocelyn | P0 | S3 | Published |
-| WEB-5 | Final evaluation of the project with AI's help, and every report section written on the website | Everyone | P0 | S3 | All report sections published on the site |
-| DEMO-1 | Freeze the demo build: tag the commit and keep the `.sof` + `.mif` files used in the validations (GitHub Release + USB) | Ariel | P0 | S3 (Wed Nov 25) | The exact files we'll use on Nov 30 are tagged and backed up |
+| WEB-5 | Final evaluation of the project with AI's help, and every report section written on the website | Everyone | P0 | S3 | All report sections the professor asks for, published on the site |
+| WEB-6 | AI usage per module, problem log and individual sheets | Everyone | P0 | S3 | Published on the site |
+| DEMO-1 | Freeze the demo build: tag the commit and keep the `.sof` + `.mif` files used in the validations (GitHub Release + USB) | Ariel | P0 | S3 (Wed Nov 25) | The exact files we'll use on Nov 30 are tagged and backed up; the tag is the graded version we hand in |
+| DEMO-6 | Repo folders: RTL, DOCS, VERIF, SRC (one PR, no open pipeline branches) | Ariel | P0 | S3 (before Wed Nov 25) | Everything compiles and every testbench runs after the move |
 | DEMO-2 | 5-minute slides and script | Yocelyn | P0 | S3 | Reviewed by the team |
 | DEMO-3 | Full rehearsal | Everyone | P0 | S3 (Fri Nov 27) | Done once end to end |
 | DEMO-4 | Validation 1 on the board: full demo run with the frozen build, following `docs/demo-checklist.md` | Ariel + Victor | P0 | S3 (Thu Nov 26) | Every item on the checklist passes |
