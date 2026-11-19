@@ -1,14 +1,16 @@
-/* MMIO registers for switches, keys, LEDs and HEX displays (PLT-2)
+/* MMIO registers for switches, keys, LEDs, HEX displays (PLT-2) and timer (PLT-5)
 Addresses from contracts.md:
     0xFFFF_0010  SW    read   bits 9..0 = switches
     0xFFFF_0014  KEY   read   bits 1..0 = keys, 1 = pressed (debounced here)
     0xFFFF_0018  LEDR  write  bits 9..0 = LEDs (also readable, for debugging)
     0xFFFF_001C  HEX   write  bits 23..0 in hexadecimal on HEX5..HEX0 (also readable)
-TIMER (0x20, PLT-5) and VIDEO_MODE (0x24, PLT-6) come later.
+    0xFFFF_0020  TIMER read   milliseconds since reset (32 bits, wraps after ~49 days)
+VIDEO_MODE (0x24, PLT-6) comes later.
 Reads and writes on negedge, like data memory (contracts.md, memory timing)
 */
 module mmio #(
-    parameter DEBOUNCE_CYCLES = 250_000  // 10 ms at 25 MHz
+    parameter DEBOUNCE_CYCLES = 250_000, // 10 ms at 25 MHz
+    parameter CYCLES_PER_MS = 25_000     // 1 ms at 25 MHz; the testbench uses a small value
 )(
     input clk,
     input reset,
@@ -31,6 +33,7 @@ localparam ADDR_SW   = 32'hFFFF_0010;
 localparam ADDR_KEY  = 32'hFFFF_0014;
 localparam ADDR_LEDR = 32'hFFFF_0018;
 localparam ADDR_HEX  = 32'hFFFF_001C;
+localparam ADDR_TIMER = 32'hFFFF_0020;
 
 // Inputs: switches only need synchronizing, keys also need debouncing
 reg [9:0] sw_sync0 = 0, sw_sync1 = 0;
@@ -42,6 +45,22 @@ end
 wire [1:0] key_pressed;
 debounce #(.CYCLES(DEBOUNCE_CYCLES)) db0(.clk(clk), .key_n(KEY[0]), .pressed(key_pressed[0]));
 debounce #(.CYCLES(DEBOUNCE_CYCLES)) db1(.clk(clk), .key_n(KEY[1]), .pressed(key_pressed[1]));
+
+/* Timer (PLT-5): the prescaler counts CYCLES_PER_MS clock cycles, then timer_ms goes up by 1.
+Read-only: writes to TIMER are ignored. Doom uses it for DG_GetTicksMs and DG_SleepMs
+*/
+reg [$clog2(CYCLES_PER_MS)-1:0] prescaler = 0;
+reg [31:0] timer_ms = 0;
+always @(posedge clk) begin
+    if (reset) begin
+        prescaler <= 0;
+        timer_ms <= 0;
+    end else if (prescaler == CYCLES_PER_MS - 1) begin
+        prescaler <= 0;
+        timer_ms <= timer_ms + 1'b1;
+    end else
+        prescaler <= prescaler + 1'b1;
+end
 
 // Output registers and read port
 reg [9:0] ledr_reg = 0;
@@ -66,6 +85,7 @@ always @(negedge clk) begin
             ADDR_KEY:  q <= {30'b0, key_pressed};
             ADDR_LEDR: q <= {22'b0, ledr_reg};
             ADDR_HEX:  q <= {8'b0, hex_reg};
+            ADDR_TIMER: q <= timer_ms;
             default:   q <= 32'b0;
         endcase
     end else
