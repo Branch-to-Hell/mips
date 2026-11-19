@@ -71,6 +71,7 @@ control_unit cu(
 // 3. Read and write registers
 register_file #(.INIT_FILE(REGS_INIT)) rf(
 	.clk(clk),
+	.reset(reset),
 	.RegWrite(RegWrite && !reset),
 	.AR1(Instruction[25:21]),
 	.AR2(Instruction[20:16]),

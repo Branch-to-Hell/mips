@@ -18,7 +18,7 @@ wire [7:0] HEX0, HEX1, HEX2, HEX3, HEX4, HEX5;
 wire [3:0] VGA_R, VGA_G, VGA_B;
 wire VGA_HS, VGA_VS;
 
-life_system #(.IMEM_INIT("../mem/life_board.hex"), .DEBOUNCE_CYCLES(50)) sys (
+life_system #(.IMEM_INIT("../mem/life_board"), .DEBOUNCE_CYCLES(50)) sys (
     .clk(clk), .reset(reset), .SW(SW), .KEY(KEY), .LEDR(LEDR),
     .HEX0(HEX0), .HEX1(HEX1), .HEX2(HEX2), .HEX3(HEX3), .HEX4(HEX4), .HEX5(HEX5),
     .VGA_R(VGA_R), .VGA_G(VGA_G), .VGA_B(VGA_B), .VGA_HS(VGA_HS), .VGA_VS(VGA_VS)

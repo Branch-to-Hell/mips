@@ -1,4 +1,12 @@
-module data_memory(
+/* Word-organized RAM for one region of the memory map (contracts.md)
+The defaults are the data region (0x1001_0000, 16 KB). life_system also uses it for
+the stack (PLT-13): BASE = 0x7FFF_E000, WORDS = 1024 (4 KB)
+BASE must be aligned to the region size (WORDS * 4), so the low address bits are the word index
+*/
+module data_memory #(
+    parameter [31:0] BASE = 32'h1001_0000,
+    parameter WORDS = 4096                  // a power of 2
+)(
     input clk,
     input MemRead,
     input MemWrite,
@@ -7,16 +15,19 @@ module data_memory(
     output [31:0] ReadData
 );
 
-reg [31:0] mem [0:4095];
+localparam IW = $clog2(WORDS);              // word index width
+localparam [31:0] SIZE = WORDS * 4;         // region size in bytes
 
-// Only aligned accesses to the 16 KB data region are supported.
+reg [31:0] mem [0:WORDS-1];
+
+// Only aligned accesses inside this region are supported
 wire ValidAddress;
-wire [11:0] WordIndex;
-assign ValidAddress = (Address >= 32'h1001_0000) &&
-                      (Address < 32'h1001_4000) &&
+wire [IW-1:0] WordIndex;
+assign ValidAddress = (Address >= BASE) &&
+                      (Address < BASE + SIZE) &&
                       (Address[1:0] == 2'b00);
-// Base is 16 KB aligned; these bits select the word within the region.
-assign WordIndex = Address[13:2];
+// BASE is aligned to SIZE, so these bits select the word within the region
+assign WordIndex = Address[IW+1:2];
 
 /* Reads and writes on negedge so Quartus uses the M9K blocks.
 The ALU has the first half of the cycle to compute the address,
@@ -31,6 +42,7 @@ always @(negedge clk) begin
     q_valid <= MemRead && ValidAddress;
 end
 
+// 0 when this region wasn't read, so the top level can OR every device's data
 assign ReadData = q_valid ? q : 32'b0;
 
 endmodule
