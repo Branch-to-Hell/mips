@@ -4,10 +4,14 @@ so the testbench simulates exactly what runs on the board
 HEX debug view (PLT-4): with SW9 up the displays show a CPU register instead of
 the program's HEX: SW4-0 = register, SW5 = half (0 = bits 15:0, 1 = bits 31:16).
 The program still reads all the switches as usual
+MODE_B = 1 adds video mode B (PLT-6) and the VIDEO_MODE switch; top_life leaves it
+off so the Game of Life build doesn't spend 64 KB of M9K on it
 */
 module life_system #(
     parameter IMEM_INIT = "",
-    parameter DEBOUNCE_CYCLES = 250_000  // 10 ms at 25 MHz; the testbench uses a small value
+    parameter DEBOUNCE_CYCLES = 250_000, // 10 ms at 25 MHz; the testbench uses a small value
+    parameter CYCLES_PER_MS = 25_000,    // timer: 1 ms at 25 MHz; the testbench uses a small value
+    parameter MODE_B = 0                 // 1 = include video mode B
 )(
     input clk,    // 25 MHz: CPU and VGA share the clock (contracts.md)
     input reset,
@@ -22,6 +26,7 @@ module life_system #(
 
 // CPU memory bus
 wire [31:0] mem_addr, mem_wdata, mem_rdata, dm_rdata, mmio_rdata, fb_rdata;
+wire video_mode;
 wire mem_we, mem_re;
 wire [7:0] io_hex0, io_hex1, io_hex2, io_hex3, io_hex4, io_hex5;  // the program's HEX (MMIO)
 
@@ -41,11 +46,12 @@ data_memory dm (
     .Address(mem_addr), .WriteData(mem_wdata), .ReadData(dm_rdata)
 );
 
-mmio #(.DEBOUNCE_CYCLES(DEBOUNCE_CYCLES)) io (
+mmio #(.DEBOUNCE_CYCLES(DEBOUNCE_CYCLES), .CYCLES_PER_MS(CYCLES_PER_MS)) io (
     .clk(clk), .reset(reset),
     .addr(mem_addr), .wdata(mem_wdata), .we(mem_we), .re(mem_re), .rdata(mmio_rdata),
     .SW(SW), .KEY(KEY), .LEDR(LEDR),
-    .HEX0(io_hex0), .HEX1(io_hex1), .HEX2(io_hex2), .HEX3(io_hex3), .HEX4(io_hex4), .HEX5(io_hex5)
+    .HEX0(io_hex0), .HEX1(io_hex1), .HEX2(io_hex2), .HEX3(io_hex3), .HEX4(io_hex4), .HEX5(io_hex5),
+    .video_mode(video_mode)
 );
 
 /* HEX debug view (PLT-4): SW9 up = show the register instead of the program's HEX.
@@ -78,14 +84,60 @@ reg fb_rd = 1'b0;
 always @(negedge clk)
     fb_rd <= mem_re && fb_sel;
 
+wire [3:0] a_r, a_g, a_b;
+wire a_hs, a_vs;
 video_mode_a video (
     .clk(clk),
     .a_clk(clk), .a_we(mem_we && fb_sel), .a_addr(mem_addr[15:2]),
     .a_wdata(mem_wdata), .a_rdata(fb_rdata),
-    .VGA_R(VGA_R), .VGA_G(VGA_G), .VGA_B(VGA_B), .VGA_HS(VGA_HS), .VGA_VS(VGA_VS)
+    .VGA_R(a_r), .VGA_G(a_g), .VGA_B(a_b), .VGA_HS(a_hs), .VGA_VS(a_vs)
 );
 
+/* Video mode B (PLT-6), only when MODE_B = 1:
+    pixels  0x1005_0000 - 0x1005_F9FF  (320x200 bytes, 4 pixels per word, big-endian)
+    palette 0x1005_FC00 - 0x1005_FFFF  (256 words 0x00RRGGBB)
+Both modes run all the time from the same clock; VIDEO_MODE picks which one reaches
+the monitor. Both have their own vga_sync starting at 0, so their timing is the same
+*/
+wire [31:0] fbb_rdata, pal_rdata;
+wire [3:0] b_r, b_g, b_b;
+wire b_hs, b_vs;
+reg fbb_rd = 1'b0, pal_rd = 1'b0;
+generate
+if (MODE_B) begin : mode_b
+    wire fbb_sel = (mem_addr[31:16] == 16'h1005) && (mem_addr[15:0] < 16'hFA00);
+    wire pal_sel = (mem_addr[31:10] == {16'h1005, 6'b111111});
+
+    always @(negedge clk) begin
+        fbb_rd <= mem_re && fbb_sel;
+        pal_rd <= mem_re && pal_sel;
+    end
+
+    video_mode_b video_b (
+        .clk(clk), .a_clk(clk),
+        .fb_we(mem_we && fbb_sel), .fb_be(4'b1111), .fb_addr(mem_addr[15:2]),
+        .fb_wdata(mem_wdata), .fb_rdata(fbb_rdata),
+        .pal_we(mem_we && pal_sel), .pal_addr(mem_addr[9:2]),
+        .pal_wdata(mem_wdata), .pal_rdata(pal_rdata),
+        .VGA_R(b_r), .VGA_G(b_g), .VGA_B(b_b), .VGA_HS(b_hs), .VGA_VS(b_vs)
+    );
+end else begin : no_mode_b
+    assign fbb_rdata = 32'b0;
+    assign pal_rdata = 32'b0;
+    assign {b_r, b_g, b_b} = 12'b0;
+    assign {b_hs, b_vs} = 2'b11;
+end
+endgenerate
+
+wire show_b = MODE_B && video_mode;
+assign VGA_R = show_b ? b_r : a_r;
+assign VGA_G = show_b ? b_g : a_g;
+assign VGA_B = show_b ? b_b : a_b;
+assign VGA_HS = show_b ? b_hs : a_hs;
+assign VGA_VS = show_b ? b_vs : a_vs;
+
 // Each device returns 0 when it wasn't read, so the read bus is an OR
-assign mem_rdata = dm_rdata | mmio_rdata | (fb_rd ? fb_rdata : 32'b0);
+assign mem_rdata = dm_rdata | mmio_rdata | (fb_rd ? fb_rdata : 32'b0)
+                 | (fbb_rd ? fbb_rdata : 32'b0) | (pal_rd ? pal_rdata : 32'b0);
 
 endmodule
