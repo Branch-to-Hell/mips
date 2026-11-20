@@ -38,8 +38,8 @@ endtask
 
 initial begin
     #1;
-    if_id.im.mem[0]=32'h12345678;
-    if_id.im.mem[1]=32'habcdef01;
+    if_id.im.write_word(0, 32'h12345678);
+    if_id.im.write_word(1, 32'habcdef01);
     tick; check_data(0,0); check_fetch(0,0,0);
     reset=0; enable=1; valid_in=1; data_in={115{1'b1}};
     tick; check_data(1,{115{1'b1}}); check_fetch(1,0,32'h12345678);    // Hold includes valid and RAM output even when inputs change.

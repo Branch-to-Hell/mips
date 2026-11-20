@@ -22,7 +22,7 @@ input [31:0] insn;
 input [4:0] target;
 input [31:0] result;
 begin
-    words[n]=insn; dut.if_id.im.mem[n]=insn;
+    words[n]=insn; dut.if_id.im.write_word(n, insn);
     targets[n]=target; values[n]=result;
     stores[n]=0; loads[n]=0; addresses[n]=0; store_values[n]=0;
     n=n+1;
@@ -43,7 +43,7 @@ endtask
 
 initial begin
     #1;
-    for(i=0;i<4096;i=i+1) begin dut.if_id.im.mem[i]=0; dm.mem[i]=0; end
+    for(i=0;i<4096;i=i+1) begin dut.if_id.im.write_word(i, 0); dm.mem[i]=0; end
     for(i=0;i<32;i=i+1) dut.rf.registers[i]=0;
     dut.rf.registers[16]=32'h10010000;
     dut.rf.registers[17]=10;
@@ -86,7 +86,7 @@ initial begin
     reset=0;
     for(cycle=0;cycle<n+4;cycle=cycle+1) begin
         @(posedge clk); #1;
-        if (dut.id_pc !== cycle*4 || dut.id_instruction !== dut.if_id.im.mem[cycle])
+        if (dut.id_pc !== cycle*4 || dut.id_instruction !== dut.if_id.im.read_word(cycle))
             $fatal(1,"IF/ID PC/instruction misaligned at cycle %0d",cycle);
         if (dut.id_valid !== 1'b1 || dut.ex_valid !== (cycle>=1) ||
             dut.mem_valid !== (cycle>=2) || dut.wb_valid !== (cycle>=3))
@@ -117,9 +117,9 @@ initial begin
     @(posedge clk); #1;
     dut.rf.registers[8]=123;
     dm.mem[0]=32'hfeedface;
-    dut.if_id.im.mem[0]={6'h08,5'd0,5'd8,16'd55};
-    dut.if_id.im.mem[1]={6'h2b,5'd16,5'd17,16'd0};
-    for(i=2;i<4096;i=i+1) dut.if_id.im.mem[i]=0;
+    dut.if_id.im.write_word(0, {6'h08,5'd0,5'd8,16'd55});
+    dut.if_id.im.write_word(1, {6'h2b,5'd16,5'd17,16'd0});
+    for(i=2;i<4096;i=i+1) dut.if_id.im.write_word(i, 0);
     reset=0;
     repeat(4) begin @(posedge clk); #1; end
     if(!mem_we || !dut.wb_reg_write || !dut.wb_valid) $fatal(1,"Reset test not exercising active writes");

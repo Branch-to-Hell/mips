@@ -59,3 +59,8 @@ __pycache__/
 
 # ---- Simulation images ----
 *.ppm
+
+# ---- Platform Designer (generated from the .qsys, rebuild with qsys-generate) ----
+*.sopcinfo
+hw/quartus/sdram_sys/
+hw/sim/sdram_sys_sim/

@@ -6,8 +6,8 @@
 // use at least TWO intervening independent instructions (or NOPs).
 // CPU-6 owns branches/jumps and delay slots: they are NOT executable here yet
 // and are decoded as bubbles, never as a spurious jal register write.
-// CPU-11/12/14 still own opcode aliases, byte-bank fetch and access faults.
-// IMEM_INIT uses the current word-per-line HEX format, not future byte images.
+// CPU-11/14 still own opcode aliases and access faults.
+// IMEM_INIT is the prefix of four big-endian byte-bank images (_b0..b3.hex).
 // RESET_PC defaults to the contract's zero text base. CPU-13 still owns
 // migration of existing program images and board tests to this base.
 module mips_cpu #(
@@ -18,6 +18,8 @@ module mips_cpu #(
     input clk, reset,
     output [31:0] mem_addr, mem_wdata,
     output mem_we, mem_re,
+    input [4:0] dbg_sel,
+    output [31:0] dbg_value,
     input [31:0] mem_rdata
 );
 // Stage enables/flushes are intentionally always-run in CPU-4. CPU-5 will
@@ -65,7 +67,7 @@ wire [31:0] wb_data;
 wire [4:0] wb_dest;
 wire wb_valid, wb_reg_write;
 register_file #(.INIT_FILE(REGS_INIT)) rf(
-    .clk(clk), .RegWrite(wb_valid && wb_reg_write && !reset),
+    .clk(clk), .reset(reset), .AR3(dbg_sel), .DR3(dbg_value), .RegWrite(wb_valid && wb_reg_write && !reset),
     .AR1(id_instruction[25:21]), .AR2(id_instruction[20:16]),
     .AW(wb_dest), .DW(wb_data), .DR1(id_a), .DR2(id_b)
 );
