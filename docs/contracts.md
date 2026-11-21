@@ -30,7 +30,8 @@ Pseudo-instructions handled by our assembler: `li la move nop`.
 - Classic 5 stages: IF, ID, EX, MEM, WB.
 - **Hazard detection unit:** stalls the pipeline on data hazards (including load-use). Forwarding is optional (P1) and only adds speed.
 - **Branches and jumps resolved in ID**, with **1 branch delay slot**: the instruction right after a branch/jump always executes (real MIPS behavior, what GCC expects).
-- Register file writes on `negedge`, reads afterwards in the same cycle. (The single-cycle CPU writes it on `posedge` instead, see "Memory timing".)
+- An instruction in WB is visible to the instruction in ID **in the same cycle**. The register file is shared with the single-cycle CPU and writes on `posedge` (end of WB), so `mips_pipeline` adds a write-through bypass from WB to the ID read ports (never for `$zero`). It behaves like "write in the first half, read in the second".
+- Until CPU-5/CPU-6 are done, the pipeline lives in `hw/rtl/mips_pipeline.v` and the board keeps the single-cycle `mips_cpu`. LIFE-6 replaces `mips_cpu` with it.
 - **Memory stall input:** the whole pipeline freezes while a memory access isn't ready (needed for SDRAM).
 
 ### Delay-slot rule for assembly programs
@@ -41,6 +42,23 @@ GCC-compiled code (Doom) fills its own delay slots and does not go through our a
 
 ### Pipeline registers
 The professor asks to document every pipeline register (CPU-4): **width, enable, reset, valid bit and when it updates**. All of them use the common clock with enables (stall = enable off, flush = valid off). IF/ID keeps the instruction word **and its PC**.
+
+Common rules (`pipeline_register.v`, `if_id_register.v`):
+- **Update:** rising edge of the CPU clock. No gated or derived clocks.
+- **Priority:** synchronous reset > flush > enable > hold.
+- **Reset and flush:** clear the payload and `valid`, even when `enable = 0`.
+- **Enable = 1:** latch the input if it is valid. If not, load a bubble (all zeros, `valid = 0`).
+- **Enable = 0 (stall):** keep the payload **and** `valid`.
+- **Valid bit:** every side effect (memory read/write, register write) is gated with `valid`, so a bubble never changes state.
+
+| Register | Width | Contents |
+|---|---|---|
+| IF/ID | 64 + valid = 65 | PC (32), instruction (32). The instruction memory's output register **is** the instruction field (M9K, no reset): it is masked to `nop` while `valid = 0`, and on a stall it re-reads the address in PC so the word does not change |
+| ID/EX | 115 + valid = 116 | A (32), B / store data (32), immediate (32), destination (5), shamt (5), ALU control (4), ALUSrc, RegWrite, MemRead, MemWrite, MemtoReg |
+| EX/MEM | 73 + valid = 74 | ALU result or address (32), store data (32), destination (5), RegWrite, MemRead, MemWrite, MemtoReg |
+| MEM/WB | 38 + valid = 39 | value to write (32, memory or ALU, chosen in MEM), destination (5), RegWrite |
+
+CPU-5 will drive the IF/ID and ID/EX enables and flushes (stalls), CPU-6 will redirect the fetch PC (no flush: the delay slot runs), and CPU-9 will turn off every enable while memory isn't ready. In CPU-4 all enables are 1 and all flushes are 0.
 
 ## Halt on invalid access (CPU-14)
 The CPU stops in a **visible** way, and the failing instruction writes **nothing** (no register, no memory), when:
