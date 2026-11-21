@@ -29,11 +29,14 @@ Pseudo-instructions handled by our assembler: `li la move nop`.
 ## Pipeline
 - Classic 5 stages: IF, ID, EX, MEM, WB.
 - **Hazard detection unit:** stalls the pipeline on data hazards (including load-use). Forwarding is optional (P1) and only adds speed.
+  - `hazard_unit.v` (CPU-5). Every operand is read in ID (ALU and memory operands, the `beq/bne` compare, the `jr` address), and without forwarding the only path to ID is the WB bypass. So: **stall while ID reads a register that the instruction in EX or MEM will write**. `$zero` never stalls.
+  - Sources are decoded exactly, so there are no false stalls: `rs` is read by everything except `j/jal/sll/srl`; `rt` only by R-type, `sw` and `beq/bne` (in I-type ALU instructions and `lw` it is the destination).
+  - During a stall, `fetch_pc` and IF/ID hold (the instruction in ID waits, and a branch/jump in ID doesn't redirect yet), ID/EX gets a bubble, and EX/MEM/WB keep going. A dependency on the previous instruction costs 2 cycles, on the one before 1 cycle (load-use included).
 - **Branches and jumps resolved in ID**, with **1 branch delay slot**: the instruction right after a branch/jump always executes (real MIPS behavior, what GCC expects).
   - In ID: `beq/bne` compare the two register operands directly (no ALU); the target is `PC + 4 + (offset << 2)`, `j/jal` use `{(PC + 4)[31:28], target, 00}` and `jr` uses `rs`. The fetch PC changes on the same edge that fetches the delay slot, so **nothing is flushed** (CPU-6).
   - `jal` writes **`PC + 8`** into `$ra` (the instruction after the delay slot). The single-cycle `mips_cpu` has no delay slot and writes `PC + 4`.
 - An instruction in WB is visible to the instruction in ID **in the same cycle**. The register file is shared with the single-cycle CPU and writes on `posedge` (end of WB), so `mips_pipeline` adds a write-through bypass from WB to the ID read ports (never for `$zero`). It behaves like "write in the first half, read in the second".
-- Until CPU-5 is done, the pipeline lives in `hw/rtl/mips_pipeline.v` and the board keeps the single-cycle `mips_cpu`. LIFE-6 replaces `mips_cpu` with it.
+- Until LIFE-6 checks it on the board, the pipeline lives in `hw/rtl/mips_pipeline.v` and the board keeps the single-cycle `mips_cpu`. LIFE-6 replaces `mips_cpu` with it.
 - **Memory stall input:** the whole pipeline freezes while a memory access isn't ready (needed for SDRAM).
 
 ### Delay-slot rule for assembly programs
@@ -60,7 +63,7 @@ Common rules (`pipeline_register.v`, `if_id_register.v`):
 | EX/MEM | 73 + valid = 74 | ALU result or address (32), store data (32), destination (5), RegWrite, MemRead, MemWrite, MemtoReg |
 | MEM/WB | 38 + valid = 39 | value to write (32, memory or ALU, chosen in MEM), destination (5), RegWrite |
 
-CPU-5 will drive the IF/ID and ID/EX enables and flushes (stalls), CPU-6 redirects the fetch PC (no flush: the delay slot runs), and CPU-9 will turn off every enable while memory isn't ready. In CPU-4 all enables are 1 and all flushes are 0.
+CPU-5 turns off the IF/ID enable and sends a bubble into ID/EX on a stall, CPU-6 redirects the fetch PC (no flush: the delay slot runs), and CPU-9 will turn off every enable while memory isn't ready. The other enables are 1 and no register is flushed.
 
 ## Halt on invalid access (CPU-14)
 The CPU stops in a **visible** way, and the failing instruction writes **nothing** (no register, no memory), when:

@@ -1,15 +1,15 @@
 // CPU-4: five-stage pipeline, one instruction per cycle after filling the pipeline.
-// Separate from the single-cycle mips_cpu until CPU-5 makes it able to run
-// every program (Game of Life included); LIFE-6 then replaces mips_cpu with it.
+// Separate from the single-cycle mips_cpu until LIFE-6 checks it on the board
+// with Game of Life; then it replaces mips_cpu.
 // Supports R-type arithmetic/shifts, I-type arithmetic/lw/sw and beq/bne/j/jal/jr.
-// CPU-5 owns hazard detection; no forwarding or automatic stalls yet.
-// A producer must reach WB before its consumer finishes ID: with this timing,
-// use at least TWO intervening independent instructions (or NOPs).
+// CPU-5: hazard_unit stalls IF/ID while the instruction in ID reads a register
+// that EX or MEM will still write (no forwarding: the value reaches ID from WB
+// through the bypass). Programs need no NOPs for data or load-use hazards.
 // CPU-6: beq/bne/j/jal/jr are resolved in ID with ONE delay slot: the
 // instruction after a branch/jump always runs, then fetch continues at the
 // target. Nothing is flushed. jal writes PC + 8 (the instruction after the
-// delay slot) into $ra. The branch compare and jr read operands in ID, so their
-// producers follow the same spacing rule above until CPU-5.
+// delay slot) into $ra. The branch compare and jr read operands in ID, so they
+// stall like any other consumer.
 // CPU-14 still owns access faults.
 // IMEM_INIT is the prefix of four big-endian byte-bank images (_b0..b3.hex).
 // RESET_PC = 0 like mips_cpu (contracts.md: text base 0, CPU-13).
@@ -25,9 +25,11 @@ module mips_pipeline #(
     output [31:0] dbg_value,
     input [31:0] mem_rdata
 );
-// Stage enables/flushes are intentionally always-run in CPU-4. CPU-5 will
-// control IF/ID and ID/EX separately; CPU-9 will add whole-pipeline memory wait.
-wire if_id_enable = 1'b1, id_ex_enable = 1'b1;
+// CPU-5: a stall holds fetch_pc and IF/ID and sends a bubble into ID/EX
+// (valid_in = 0 below); EX, MEM and WB keep going. CPU-9 will add the
+// whole-pipeline memory wait. No flushes: the delay slot always runs (CPU-6).
+wire stall;
+wire if_id_enable = !stall, id_ex_enable = 1'b1;
 wire ex_mem_enable = 1'b1, mem_wb_enable = 1'b1;
 wire if_id_flush = 1'b0, id_ex_flush = 1'b0;
 wire ex_mem_flush = 1'b0, mem_wb_flush = 1'b0;
@@ -107,19 +109,31 @@ wire [31:0] ex_a_in = link ? link_value : id_a;
 wire [31:0] ex_b_in = link ? 32'd0 : id_b;
 wire [4:0] ex_dest_in = link ? 5'd31 : id_dest;
 
+// CPU-5 hazard detection (hazard_unit.v). Declared here, driven by later stages.
+wire ex_valid, ex_reg_write;
+wire [4:0] ex_dest;
+wire mem_valid, mem_reg_write;
+wire [4:0] mem_dest;
+hazard_unit hu(
+    .opcode(id_instruction[31:26]), .funct(id_instruction[5:0]),
+    .rs(id_rs), .rt(id_rt), .id_valid(id_valid),
+    .ex_valid(ex_valid), .ex_reg_write(ex_reg_write), .ex_dest(ex_dest),
+    .mem_valid(mem_valid), .mem_reg_write(mem_reg_write), .mem_dest(mem_dest),
+    .stall(stall)
+);
+
 // ID/EX: 115 payload + 1 valid = 116 bits.
 // Payload: A or jal link value(32), B/store data(32), immediate(32), destination(5), shamt(5),
 // ALU control(4), ALUSrc(1), RegWrite(1), MemRead(1), MemWrite(1), MemtoReg(1).
 // posedge; enable=0 holds all fields; synchronous reset/flush clears all fields
 // and valid regardless of enable; invalid input inserts a bubble. See primitive.
-wire ex_valid;
 wire [31:0] ex_a, ex_b, ex_imm;
-wire [4:0] ex_dest, ex_shamt;
+wire [4:0] ex_shamt;
 wire [3:0] ex_alu_ctl;
-wire ex_alu_src, ex_reg_write, ex_mem_read, ex_mem_write, ex_mem_to_reg;
+wire ex_alu_src, ex_mem_read, ex_mem_write, ex_mem_to_reg;
 pipeline_register #(.WIDTH(115)) id_ex(
     .clk(clk), .reset(reset), .enable(id_ex_enable), .flush(id_ex_flush),
-    .valid_in(id_valid),
+    .valid_in(id_valid && !stall),   // a stalled instruction leaves a bubble
     .data_in({ex_a_in, ex_b_in, id_imm, ex_dest_in, id_instruction[10:6], id_alu_ctl,
               alu_src, reg_write, mem_read, mem_write, mem_to_reg}),
     .valid_out(ex_valid),
@@ -140,9 +154,8 @@ wire [31:0] ex_value = (ex_mem_read || ex_mem_write) ? ex_address : ex_result;
 // MemRead(1), MemWrite(1), MemtoReg(1).
 // posedge; enable holds all fields; synchronous reset/flush clears payload and
 // valid even while disabled; invalid input inserts a bubble. valid gates bus.
-wire mem_valid, mem_reg_write, mem_read_ctl, mem_write_ctl, mem_to_reg_ctl;
+wire mem_read_ctl, mem_write_ctl, mem_to_reg_ctl;
 wire [31:0] mem_value, mem_store_data;
-wire [4:0] mem_dest;
 pipeline_register #(.WIDTH(73)) ex_mem(
     .clk(clk), .reset(reset), .enable(ex_mem_enable), .flush(ex_mem_flush),
     .valid_in(ex_valid),
