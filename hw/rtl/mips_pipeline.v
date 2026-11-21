@@ -1,12 +1,15 @@
 // CPU-4: five-stage pipeline, one instruction per cycle after filling the pipeline.
-// Separate from the single-cycle mips_cpu until CPU-5/CPU-6 make it able to run
+// Separate from the single-cycle mips_cpu until CPU-5 makes it able to run
 // every program (Game of Life included); LIFE-6 then replaces mips_cpu with it.
-// Supports existing R-type arithmetic/shifts and I-type arithmetic/lw/sw.
+// Supports R-type arithmetic/shifts, I-type arithmetic/lw/sw and beq/bne/j/jal/jr.
 // CPU-5 owns hazard detection; no forwarding or automatic stalls yet.
 // A producer must reach WB before its consumer finishes ID: with this timing,
 // use at least TWO intervening independent instructions (or NOPs).
-// CPU-6 owns branches/jumps and delay slots: they are NOT executable here yet
-// and are decoded as bubbles, never as a spurious jal register write.
+// CPU-6: beq/bne/j/jal/jr are resolved in ID with ONE delay slot: the
+// instruction after a branch/jump always runs, then fetch continues at the
+// target. Nothing is flushed. jal writes PC + 8 (the instruction after the
+// delay slot) into $ra. The branch compare and jr read operands in ID, so their
+// producers follow the same spacing rule above until CPU-5.
 // CPU-14 still owns access faults.
 // IMEM_INIT is the prefix of four big-endian byte-bank images (_b0..b3.hex).
 // RESET_PC = 0 like mips_cpu (contracts.md: text base 0, CPU-13).
@@ -30,13 +33,19 @@ wire if_id_flush = 1'b0, id_ex_flush = 1'b0;
 wire ex_mem_flush = 1'b0, mem_wb_flush = 1'b0;
 
 // IF: this PC names the fetch request, not the instruction currently in ID.
+// While a branch/jump is in ID, fetch_pc already points at its delay slot
+// (id_pc + 4), which is fetched on this edge; next_fetch_pc is the address
+// fetched on the edge AFTER it: the target if taken, else sequential.
 reg [31:0] fetch_pc;
-always @(posedge clk) begin
-    if (reset) fetch_pc <= RESET_PC;
-    else if (if_id_enable) fetch_pc <= fetch_pc + 32'd4;
-end
 wire [31:0] id_pc, id_instruction;
 wire id_valid;
+wire redirect;
+wire [31:0] redirect_pc;
+wire [31:0] next_fetch_pc = redirect ? redirect_pc : fetch_pc + 32'd4;
+always @(posedge clk) begin
+    if (reset) fetch_pc <= RESET_PC;
+    else if (if_id_enable) fetch_pc <= next_fetch_pc;
+end
 // IF/ID: 64 payload + 1 valid = 65 bits. Detailed reset/enable/update behavior
 // is in if_id_register.v; RAM output and saved PC update on the same edge.
 if_id_register #(.IMEM_INIT(IMEM_INIT)) if_id(
@@ -81,8 +90,25 @@ register_file #(.INIT_FILE(REGS_INIT)) rf(
 assign id_a = (wb_write && wb_dest == id_rs) ? wb_data : rf_a;
 assign id_b = (wb_write && wb_dest == id_rt) ? wb_data : rf_b;
 
+// CPU-6: branch/jump resolution in ID (contracts.md "Pipeline").
+// beq/bne compare the ID operands directly (no ALU), targets use PC + 4 of the
+// branch, i.e. the delay slot's address, like MIPS and the single-cycle CPU.
+wire [31:0] id_pc_plus4 = id_pc + 32'd4;
+wire [31:0] branch_target = id_pc_plus4 + {id_imm[29:0], 2'b00};
+wire [31:0] jump_target = {id_pc_plus4[31:28], id_instruction[25:0], 2'b00};
+wire operands_equal = (id_a == id_b);
+wire branch_taken = branch && (branch_ne ? !operands_equal : operands_equal);
+assign redirect = id_valid && (branch_taken || jump || jump_reg);
+assign redirect_pc = jump_reg ? id_a : (jump ? jump_target : branch_target);
+// jal: the link value PC + 8 travels as operand A with B = 0; the ALU adds
+// (ALUOp 00), so EX produces it like any result and WB writes $ra.
+wire [31:0] link_value = id_pc + 32'd8;
+wire [31:0] ex_a_in = link ? link_value : id_a;
+wire [31:0] ex_b_in = link ? 32'd0 : id_b;
+wire [4:0] ex_dest_in = link ? 5'd31 : id_dest;
+
 // ID/EX: 115 payload + 1 valid = 116 bits.
-// Payload: A(32), B/store data(32), immediate(32), destination(5), shamt(5),
+// Payload: A or jal link value(32), B/store data(32), immediate(32), destination(5), shamt(5),
 // ALU control(4), ALUSrc(1), RegWrite(1), MemRead(1), MemWrite(1), MemtoReg(1).
 // posedge; enable=0 holds all fields; synchronous reset/flush clears all fields
 // and valid regardless of enable; invalid input inserts a bubble. See primitive.
@@ -93,8 +119,8 @@ wire [3:0] ex_alu_ctl;
 wire ex_alu_src, ex_reg_write, ex_mem_read, ex_mem_write, ex_mem_to_reg;
 pipeline_register #(.WIDTH(115)) id_ex(
     .clk(clk), .reset(reset), .enable(id_ex_enable), .flush(id_ex_flush),
-    .valid_in(id_valid && !(branch || jump || jump_reg)),
-    .data_in({id_a, id_b, id_imm, id_dest, id_instruction[10:6], id_alu_ctl,
+    .valid_in(id_valid),
+    .data_in({ex_a_in, ex_b_in, id_imm, ex_dest_in, id_instruction[10:6], id_alu_ctl,
               alu_src, reg_write, mem_read, mem_write, mem_to_reg}),
     .valid_out(ex_valid),
     .data_out({ex_a, ex_b, ex_imm, ex_dest, ex_shamt, ex_alu_ctl,
