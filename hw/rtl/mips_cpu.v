@@ -62,6 +62,7 @@ instruction_memory #(.INIT_FILE(IMEM_INIT)) im(.clk(clk), .Address(PC_fetch), .I
 control_unit cu(
 	.opcode(Instruction[31:26]),
 	.funct(Instruction[5:0]),
+	.rt(Instruction[20:16]),
 	.BranchNE(BranchNE), .Jump(Jump), .JumpReg(JumpReg), .Link(Link),
 	.RegDst(RegDst), .ALUSrc(ALUSrc), .MemtoReg(MemtoReg),
 	.RegWrite(RegWrite), .MemRead(MemRead), .MemWrite(MemWrite),
