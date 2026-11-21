@@ -108,7 +108,8 @@ The professor asks for **one byte per address** and big-endian fetch: the word i
   - `<name>_bytes.hex`: one byte per address, big-endian (the professor's loadable image).
   - `<name>_b0.hex` … `<name>_b3.hex`: bank *k* = the bytes at addresses with `addr[1:0] = k`; line *i* is the byte of instruction *i*.
   - `instruction_memory` loads the 4 bank files with `$readmemh` from the prefix in `IMEM_INIT` (e.g. `"../mem/life_board"`), in ModelSim and in Quartus.
-  - The assembler writes them from the ASM (TC-13). Until then, `sw/tools/hex2banks.py` makes them from a word `.hex`.
+  - The assembler writes them from the ASM (TC-13), together with the word image `<name>.hex` and the data image `<name>_data.hex`. Everything goes to `hw/mem/` by default (or to the folder given with `-o`), never to `sw/programs/`. Until then, `sw/tools/hex2banks.py` makes them from a word `.hex`.
+  - **No `.mif` files** for program images: `$readmemh` with `.hex` works the same in ModelSim and Quartus.
 
 ### Memory timing
 All memories read on a clock edge, so Quartus can place them in M9K blocks (a combinational read doesn't fit: 16 KB of flip-flops is more than the whole FPGA).
@@ -160,7 +161,7 @@ Both are dual-port RAMs: the CPU writes, the VGA reads.
 
 ## Tool settings
 - **MARS:** *Settings → Delayed branching* **off**; *Memory Configuration → Default*; Bitmap Display: unit 4×4, display 512 wide, base address `0x10040000 (heap)`.
-- **Quartus (MAX 10):** configuration mode *"Single Uncompressed Image with Memory Initialization"* (required for `.mif` files).
+- **Quartus (MAX 10):** configuration mode *"Single Uncompressed Image with Memory Initialization"* (required to initialize on-chip memory from the `.hex` images).
 - **Instruction RAM:** enable *In-System Memory Content Editor* on the 4 banks to load programs without recompiling.
 - **GCC:** `mips-linux-gnu-gcc` (package `gcc-mips-linux-gnu` in WSL) with `-march=mips1 -msoft-float -mno-abicalls -G0 -EB` (**big-endian**, TC-14).
 - **Assembler:** text base `0x00000000` by default; `--text-base 0x00400000` only to compare with MARS dumps.

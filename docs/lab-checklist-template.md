@@ -7,7 +7,7 @@
 ## Before going
 - [ ] Simulation passes for everything being tested
 - [ ] Project compiles in Quartus without errors
-- [ ] Programs/.mif files ready
+- [ ] Program images (`hw/mem/*.hex`) ready
 
 ## Tests
 | # | Test | Expected | Result |
