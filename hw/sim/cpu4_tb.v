@@ -1,6 +1,7 @@
 `timescale 1ns/1ps
 // Full CPU-4 program: independent instructions, memory traffic, and a consumer
-// scheduled with two intervening instructions (WB-negedge -> ID-posedge).
+// scheduled with two intervening instructions (WB -> ID write-through bypass).
+// Runs the pipeline with RESET_PC = 0 (the contract's text base, CPU-13).
 // Also checks cycle-by-cycle PC/instruction pairing, fill, and reset effects.
 module cpu4_tb;
 reg clk=0, reset=1;
@@ -11,7 +12,7 @@ reg [31:0] words[0:127], values[0:127];
 reg [4:0] targets[0:127];
 reg stores[0:127], loads[0:127];
 reg [31:0] addresses[0:127], store_values[0:127];
-mips_cpu dut(.clk(clk),.reset(reset),.mem_addr(mem_addr),.mem_wdata(mem_wdata),
+mips_pipeline #(.RESET_PC(32'h0)) dut(.clk(clk),.reset(reset),.mem_addr(mem_addr),.mem_wdata(mem_wdata),
     .mem_we(mem_we),.mem_re(mem_re),.mem_rdata(mem_rdata));
 data_memory dm(.clk(clk),.MemRead(mem_re),.MemWrite(mem_we),.Address(mem_addr),
     .WriteData(mem_wdata),.ReadData(mem_rdata));
@@ -106,9 +107,10 @@ initial begin
                 $fatal(1,"WB mismatch instruction %0d: dest=%d value=%h expected=%h",index,dut.wb_dest,dut.wb_data,values[index]);
         end else if(dut.wb_valid && dut.wb_reg_write && dut.wb_dest!=0)
             $fatal(1,"Unexpected architectural register write");
-        @(negedge clk); #1;
+        // The register file commits at the end of the WB cycle (this posedge).
+        index=cycle-4;
         if(index>=0 && index<n && targets[index]!=0 && dut.rf.registers[targets[index]] !== values[index])
-            $fatal(1,"Register write did not occur on negedge");
+            $fatal(1,"Register write did not commit at the end of WB (instruction %0d)",index);
     end
     if(dm.mem[2] !== 10 || dm.mem[3] !== 3 || dm.mem[4] !== 42 || dut.rf.registers[0] !== 0)
         $fatal(1,"Final memory/zero-register mismatch");
@@ -129,6 +131,8 @@ initial begin
     if(dut.rf.registers[8] !== 123 || dm.mem[0] !== 32'hfeedface)
         $fatal(1,"Reset allowed a register/memory side effect");
     @(posedge clk); #1;
+    if(dut.rf.registers[8] !== 123)
+        $fatal(1,"Reset allowed the pending WB register write");
     if({dut.id_valid,dut.ex_valid,dut.mem_valid,dut.wb_valid} !== 0 || dut.fetch_pc !== 0)
         $fatal(1,"Reset did not clear pipeline and restart fetch");
     reset=0;
