@@ -21,8 +21,16 @@ Terasic **DE10-Lite** — MAX 10 `10M50DAF484C7G`, 64 MB SDRAM, 4-bit-per-channe
 - **Assembler** emits the professor's codes (`0x21 0x23 0x09`) for `add sub addi`, and also accepts the mnemonics `addu subu addiu`.
 
 **Phase 2 (level 2: C code and Doom)** — the rest of the MIPS I integer set that GCC uses:
-`sltu sltiu xor xori sra sllv srlv srav lb lbu lh lhu sb sh bltz bgez blez bgtz jalr mult multu div divu mfhi mflo mthi mtlo`.
-No floating point (C code is compiled with `-msoft-float`). No exceptions/interrupts.
+`sltu sltiu xor xori sra sllv srlv srav lb lbu lh lhu sb sh bltz bgez blez bgtz jalr mult multu div divu mfhi mflo mthi mtlo` (+ `bltzal bgezal`, which GCC uses as `bal`).
+No floating point (C code is compiled with `-msoft-float`). No exceptions/interrupts: `syscall`, `break` and unknown instructions write nothing (they act as `nop`).
+Not implemented: the unaligned-access instructions `lwl lwr swl swr` (GCC only emits them for packed or unaligned data).
+
+**Phase 2 in `mips_pipeline` (CPU-7, CPU-8).** The single-cycle `mips_cpu` stays phase 1: it shares the decoder and the ALU, so phase 1 programs run exactly as before, but it has no byte lanes, branches against zero or HI/LO.
+- `sltiu` sign-extends its immediate and then compares unsigned (like MIPS); `xori` zero-extends, like `andi ori`.
+- `sllv srlv srav` use only `rs[4:0]` as the shift amount.
+- Byte/half loads and stores: see "CPU memory bus" (`mem_be`).
+- `bltzal bgezal` write `PC + 8` into `$ra` even when the branch is not taken; `jalr rd, rs` writes `PC + 8` into `rd` (`$ra` if omitted).
+- **HI/LO (`mult_div.v`, in EX):** `mult/multu` take 1 cycle (33x33 signed multiplier on the DSP blocks). `div/divu` take 32 cycles in the background, like the R2000: the pipeline keeps running, and any HI/LO instruction (`mfhi mflo mthi mtlo mult div`) waits in ID until the divide is done. The quotient rounds toward zero and the remainder has the dividend's sign (C semantics). Divide by zero gives a defined but meaningless result; compile with GCC's default zero check (`break 7`, a `nop` here) or `-mno-check-zero-division`.
 
 Pseudo-instructions handled by our assembler: `li la move nop`.
 
@@ -30,11 +38,12 @@ Pseudo-instructions handled by our assembler: `li la move nop`.
 - Classic 5 stages: IF, ID, EX, MEM, WB.
 - **Hazard detection unit:** stalls the pipeline on data hazards (including load-use). Forwarding is optional (P1) and only adds speed.
   - `hazard_unit.v` (CPU-5). Every operand is read in ID (ALU and memory operands, the `beq/bne` compare, the `jr` address), and without forwarding the only path to ID is the WB bypass. So: **stall while ID reads a register that the instruction in EX or MEM will write**. `$zero` never stalls.
-  - Sources are decoded exactly, so there are no false stalls: `rs` is read by everything except `j/jal/sll/srl`; `rt` only by R-type, `sw` and `beq/bne` (in I-type ALU instructions and `lw` it is the destination).
+  - Sources are decoded exactly, so there are no false stalls: `rs` is read by everything except `j/jal/sll/srl/sra`; `rt` only by R-type, stores (`sb sh sw`) and `beq/bne` (in I-type ALU instructions and loads it is the destination; in `bltz/bgez/bltzal/bgezal` it selects the branch).
+  - CPU-8: an instruction that uses HI/LO also stalls while a divide is running (or starting in EX).
   - During a stall, `fetch_pc` and IF/ID hold (the instruction in ID waits, and a branch/jump in ID doesn't redirect yet), ID/EX gets a bubble, and EX/MEM/WB keep going. A dependency on the previous instruction costs 2 cycles, on the one before 1 cycle (load-use included).
 - **Branches and jumps resolved in ID**, with **1 branch delay slot**: the instruction right after a branch/jump always executes (real MIPS behavior, what GCC expects).
-  - In ID: `beq/bne` compare the two register operands directly (no ALU); the target is `PC + 4 + (offset << 2)`, `j/jal` use `{(PC + 4)[31:28], target, 00}` and `jr` uses `rs`. The fetch PC changes on the same edge that fetches the delay slot, so **nothing is flushed** (CPU-6).
-  - `jal` writes **`PC + 8`** into `$ra` (the instruction after the delay slot). The single-cycle `mips_cpu` has no delay slot and writes `PC + 4`.
+  - In ID: `beq/bne` compare the two register operands directly (no ALU), and `bltz bgez blez bgtz bltzal bgezal` look only at the sign bit of `rs` and whether it is zero; the target is `PC + 4 + (offset << 2)`, `j/jal` use `{(PC + 4)[31:28], target, 00}` and `jr/jalr` use `rs`. The fetch PC changes on the same edge that fetches the delay slot, so **nothing is flushed** (CPU-6).
+  - `jal` writes **`PC + 8`** into `$ra` (the instruction after the delay slot), and so do `jalr` (into `rd`) and `bltzal/bgezal`. The single-cycle `mips_cpu` has no delay slot and writes `PC + 4`.
 - An instruction in WB is visible to the instruction in ID **in the same cycle**. The register file is shared with the single-cycle CPU and writes on `posedge` (end of WB), so `mips_pipeline` adds a write-through bypass from WB to the ID read ports (never for `$zero`). It behaves like "write in the first half, read in the second".
 - Until LIFE-6 checks it on the board, the pipeline lives in `hw/rtl/mips_pipeline.v` and the board keeps the single-cycle `mips_cpu`. LIFE-6 replaces `mips_cpu` with it.
 - **Memory stall input:** the whole pipeline freezes while a memory access isn't ready (needed for SDRAM).
@@ -59,28 +68,30 @@ Common rules (`pipeline_register.v`, `if_id_register.v`):
 | Register | Width | Contents |
 |---|---|---|
 | IF/ID | 64 + valid = 65 | PC (32), instruction (32). The instruction memory's output register **is** the instruction field (M9K, no reset): it is masked to `nop` while `valid = 0`, and on a stall it re-reads the address in PC so the word does not change |
-| ID/EX | 147 + valid = 148 | PC (32, for `halt_pc`), A or the `jal` link value PC + 8 (32), B / store data (32), immediate (32), destination (5), shamt (5), ALU control (4), ALUSrc, RegWrite, MemRead, MemWrite, MemtoReg |
-| EX/MEM | 105 + valid = 106 | PC (32, for `halt_pc`), ALU result or address (32), store data (32), destination (5), RegWrite, MemRead, MemWrite, MemtoReg |
-| MEM/WB | 38 + valid = 39 | value to write (32, memory or ALU, chosen in MEM), destination (5), RegWrite |
+| ID/EX | 154 + valid = 155 | PC (32, for `halt_pc`), A or the link value PC + 8 (32), B / store data (32), immediate (32), destination (5), shamt (5), ALU control (4), ALUSrc, RegWrite, MemRead, MemWrite, MemtoReg, memory size (2), MemUnsigned, HI/LO operation (4) |
+| EX/MEM | 108 + valid = 109 | PC (32, for `halt_pc`), ALU/HI/LO result or address (32), store data (32), destination (5), RegWrite, MemRead, MemWrite, MemtoReg, memory size (2), MemUnsigned |
+| MEM/WB | 38 + valid = 39 | value to write (32, memory or ALU, chosen in MEM; loads already extended), destination (5), RegWrite |
+
+HI and LO are not pipeline registers: they live in `mult_div` (EX) and are written only by an instruction that completes (valid, not dropped by a halt).
 
 CPU-5 turns off the IF/ID enable and sends a bubble into ID/EX on a stall, CPU-6 redirects the fetch PC (no flush: the delay slot runs), and CPU-9 will turn off every enable while memory isn't ready. The other enables are 1 and no register is flushed.
 
 ## Halt on invalid access (CPU-14)
 The CPU stops in a **visible** way, and the failing instruction writes **nothing** (no register, no memory), when:
 - a **fetch** is outside the text region or not aligned to 4, or
-- an **`lw`/`sw`** goes to an address outside every region of the memory map, or not aligned to 4 (byte/half loads and stores in phase 2 check their own alignment).
+- a **load/store** goes to an address outside every region of the memory map, or is misaligned for its size: words need `addr[1:0] = 0`, halves (`lh lhu sh`) `addr[0] = 0`, bytes can be anywhere.
 
 When halted: the PC freezes, every write is blocked, and the board shows an error code on the LEDs/HEX. Only reset leaves the halt state. The top-level address decoder decides what is valid, so new regions (SDRAM, mode B) just get added to it.
 
 How `mips_pipeline` does it:
 - **Fetch:** checked when the instruction reaches ID. Its PC must be inside the 16 KB text region and word aligned. Every fetched instruction runs (there is no flush), so the fault is real.
-- **`lw`/`sw`:** checked in MEM. It fails if `mem_fault = 1` (no region) or the address is not word aligned (the CPU checks this itself). `mem_re`/`mem_we` stay at 0 and the instruction goes into MEM/WB as a bubble, so no device and no register is written.
-- **Precise:** older instructions finish, and the failing one and every younger one write nothing. If an older `lw`/`sw` fails after a younger fetch fault (for example a bad `lw` in the delay slot of a `jr` to a bad address), the `lw`/`sw` is the one reported.
+- **Loads/stores:** checked in MEM. It fails if `mem_fault = 1` (no region) or the address is misaligned for its size (the CPU checks this itself). `mem_re`/`mem_we` stay at 0 and the instruction goes into MEM/WB as a bubble, so no device and no register is written.
+- **Precise:** older instructions finish, and the failing one and every younger one write nothing. If an older load/store fails after a younger fetch fault (for example a bad `lw` in the delay slot of a `jr` to a bad address), the load/store is the one reported. HI/LO are not touched by a dropped instruction either.
 
 | Output | Meaning |
 |---|---|
 | `halted` | 1 = stopped |
-| `halt_cause[1:0]` | 1 = fetch, 2 = `lw`, 3 = `sw` (0 = running) |
+| `halt_cause[1:0]` | 1 = fetch, 2 = load (`lw lh lhu lb lbu`), 3 = store (`sw sh sb`) (0 = running) |
 | `halt_pc[31:0]` | PC of the failing instruction |
 | `halt_addr[31:0]` | The bad address (for a fetch, the PC itself) |
 
@@ -108,14 +119,17 @@ The hardware doesn't implement the whole 4 GB. The address decoder looks at the 
 | Port | Dir | Notes |
 |---|---|---|
 | `mem_addr[31:0]` | out | Byte address, `rs + offset` from its own adder (not the ALU, to keep the half-cycle path short) |
-| `mem_wdata[31:0]` | out | Data for `sw` |
-| `mem_we` | out | 1 = write (`sw`) |
-| `mem_re` | out | 1 = read (`lw`) |
-| `mem_rdata[31:0]` | in | Data for `lw`, must be valid before the next `posedge` |
+| `mem_wdata[31:0]` | out | Data for stores. `sb` repeats the byte in all 4 lanes and `sh` the half in both, so a device only has to look at `mem_be` |
+| `mem_be[3:0]` | out | `mips_pipeline` only (CPU-7). Byte enables, big-endian like `framebuffer_b`: `mem_be[3]` = bits 31..24 = the byte at the lowest address. `sw`/`lw` = `1111`; `sh`/`lh` = `1100` at offset 0, `0011` at offset 2; `sb`/`lb` = `1000 >> addr[1:0]` |
+| `mem_we` | out | 1 = write (`sw sh sb`) |
+| `mem_re` | out | 1 = read (`lw lh lhu lb lbu`) |
+| `mem_rdata[31:0]` | in | The whole word, must be valid before the next `posedge`. For `lb/lh` the CPU picks the byte/half and sign- or zero-extends it |
 | `mem_fault` | in | 1 = `mem_addr` isn't in any region. It must depend only on `mem_addr` (not on `mem_re`/`mem_we`). The CPU checks alignment itself and halts with no writes (CPU-14) |
 | `halted`, `halt_cause[1:0]`, `halt_pc[31:0]`, `halt_addr[31:0]` | out | The CPU is stopped by a halt, why, where and which address (see "Halt on invalid access"); the top level shows the error code |
 
 Phase 2 adds a `mem_stall` input here (CPU-9).
+
+**Devices and `mem_be`.** A device written by `sb`/`sh` must honour `mem_be`. `framebuffer_b` already does (its `fb_be` input). `data_memory` (data and stack), mode A and the MMIO are word-only for now: they write the whole word. They get `mem_be` when the pipeline is wired into a top level (LIFE-6 for the Game of Life, `top_doom` for C code). The Game of Life only uses `lw`/`sw`, so the frozen build doesn't need it.
 
 ### Instruction memory (CPU-12)
 The professor asks for **one byte per address** and big-endian fetch: the word is `mem[PC]`, `mem[PC+1]`, `mem[PC+2]`, `mem[PC+3]`, from the most significant byte to the least.
@@ -182,6 +196,7 @@ Both are dual-port RAMs: the CPU writes, the VGA reads.
 - **Instruction RAM:** enable *In-System Memory Content Editor* on the 4 banks to load programs without recompiling.
 - **GCC:** `mips-linux-gnu-gcc` (package `gcc-mips-linux-gnu` in WSL) with `-march=mips1 -msoft-float -mno-abicalls -G0 -EB` (**big-endian**, TC-14).
 - **Assembler:** text base `0x00000000` by default; `--text-base 0x00400000` only to compare with MARS dumps.
+- **GNU as test programs (CPU-7, CPU-8):** `sw/programs/*.s` with `.set noreorder` (every delay slot written by hand, like GCC output). `sw/tools/gas_image.sh <file.s>` (WSL) assembles one with `mips-linux-gnu-as -EB -march=mips1` and writes the word image `hw/mem/<name>.hex`. The real assembler is also an independent check of our encodings. Use `div $zero, rs, rt` (3 operands): the 2-operand `div` is a GNU as macro with a zero check.
 - **Website:** [Astro Starlight](https://starlight.astro.build) in `web/`. One Markdown page per topic in `web/src/content/docs/`; the sidebar is set in `web/astro.config.mjs`. Run `npm run build` from `web/` before opening a PR (it must pass). Vercel deploys with **Root Directory = `web`**: production from `main`, a preview URL for each PR.
 
 ## Changes from the professor's spec
