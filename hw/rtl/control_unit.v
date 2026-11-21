@@ -29,7 +29,7 @@ always @(*) begin
 			Branch = 1'b0;
 			ALUOp = 2'b10; // ALU Control uses funct
 		end
-		6'b001000: begin // addi
+		6'b001000, 6'b001001: begin // addi, addiu (CPU-11: the professor's addi = 0x09)
 			RegDst   = 1'b0;
 			ALUSrc   = 1'b1;
 			MemtoReg = 1'b0;

@@ -22,8 +22,8 @@ always @(*) begin
             case (funct) // here funct matters
                 6'b100100: ALUctl = 4'b0000; // and
                 6'b100101: ALUctl = 4'b0001; // or
-				6'b100000: ALUctl = 4'b0010; // add
-                6'b100010: ALUctl = 4'b0110; // sub
+				6'b100000, 6'b100001: ALUctl = 4'b0010; // add, addu (CPU-11: the professor's add = 0x21)
+                6'b100010, 6'b100011: ALUctl = 4'b0110; // sub, subu (CPU-11: the professor's sub = 0x23)
                 6'b101010: ALUctl = 4'b0111; // slt
 				6'b100111: ALUctl = 4'b1100; // nor
                 6'b000000: ALUctl = 4'b0011; // sll (also nop = 0x00000000)
