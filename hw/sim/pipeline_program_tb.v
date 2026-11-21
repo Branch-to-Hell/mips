@@ -11,7 +11,7 @@ wire mem_we, mem_re;
 reg [31:0] leds = 0;
 integer i, cycles = 0, stalls = 0;
 mips_pipeline dut(.clk(clk), .reset(reset), .mem_addr(mem_addr), .dbg_sel(5'd0), .dbg_value(),
-    .mem_wdata(mem_wdata), .mem_we(mem_we), .mem_re(mem_re), .mem_rdata(mem_rdata));
+    .mem_wdata(mem_wdata), .mem_we(mem_we), .mem_re(mem_re), .mem_rdata(mem_rdata), .mem_fault(1'b0));
 data_memory dm(.clk(clk), .MemRead(mem_re), .MemWrite(mem_we),
     .Address(mem_addr), .WriteData(mem_wdata), .ReadData(mem_rdata));
 always #5 clk = ~clk;
