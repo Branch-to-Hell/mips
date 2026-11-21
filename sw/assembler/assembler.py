@@ -437,13 +437,13 @@ def main():
     global TEXT_BASE
     TEXT_BASE = int(args.text_base, 0)
     SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__)) #get the directory of the script
-    DEFAULT_MEM_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "../../hw/mem")) #get the default memory directory
+    MEM_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "../../hw/mem")) #get the default memory directory
 
-    outdir = args.outdir or DEFAULT_MEM_DIR
+    outdir = (args.outdir or os.path.dirname(args.source)or ".")
     base = os.path.splitext(os.path.basename(args.source))[0]
 
     os.makedirs(outdir,exist_ok=True)
-
+    os.makedirs(MEM_DIR, exist_ok=True)
     with open(args.source) as f:
         lines = f.read().splitlines()
 
@@ -452,9 +452,9 @@ def main():
         labels, text, data = first_pass(lines) 
         prog = second_pass(text, labels) 
         words = [w for _, w, _ in prog]
-        write_hex( os.path.join(outdir, base + ".hex"),words )
-        write_mif(  os.path.join(outdir, base + ".mif"), words, TEXT_DEPTH )
-        write_banks(os.path.join(outdir, base), words)
+        write_hex(os.path.join(outdir, base + ".hex"), words)
+        write_mif(os.path.join(outdir, base + ".mif"), words, TEXT_DEPTH)
+        write_banks(os.path.join(MEM_DIR, base), words) #.byte .b0, b1,b2 and b3
 
         if data:
             write_hex( os.path.join( outdir, base + "_data.hex"),data)
