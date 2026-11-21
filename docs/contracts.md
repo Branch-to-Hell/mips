@@ -29,8 +29,14 @@ Pseudo-instructions handled by our assembler: `li la move nop`.
 ## Pipeline
 - Classic 5 stages: IF, ID, EX, MEM, WB.
 - **Hazard detection unit:** stalls the pipeline on data hazards (including load-use). Forwarding is optional (P1) and only adds speed.
+  - `hazard_unit.v` (CPU-5). Every operand is read in ID (ALU and memory operands, the `beq/bne` compare, the `jr` address), and without forwarding the only path to ID is the WB bypass. So: **stall while ID reads a register that the instruction in EX or MEM will write**. `$zero` never stalls.
+  - Sources are decoded exactly, so there are no false stalls: `rs` is read by everything except `j/jal/sll/srl`; `rt` only by R-type, `sw` and `beq/bne` (in I-type ALU instructions and `lw` it is the destination).
+  - During a stall, `fetch_pc` and IF/ID hold (the instruction in ID waits, and a branch/jump in ID doesn't redirect yet), ID/EX gets a bubble, and EX/MEM/WB keep going. A dependency on the previous instruction costs 2 cycles, on the one before 1 cycle (load-use included).
 - **Branches and jumps resolved in ID**, with **1 branch delay slot**: the instruction right after a branch/jump always executes (real MIPS behavior, what GCC expects).
-- Register file writes on `negedge`, reads afterwards in the same cycle. (The single-cycle CPU writes it on `posedge` instead, see "Memory timing".)
+  - In ID: `beq/bne` compare the two register operands directly (no ALU); the target is `PC + 4 + (offset << 2)`, `j/jal` use `{(PC + 4)[31:28], target, 00}` and `jr` uses `rs`. The fetch PC changes on the same edge that fetches the delay slot, so **nothing is flushed** (CPU-6).
+  - `jal` writes **`PC + 8`** into `$ra` (the instruction after the delay slot). The single-cycle `mips_cpu` has no delay slot and writes `PC + 4`.
+- An instruction in WB is visible to the instruction in ID **in the same cycle**. The register file is shared with the single-cycle CPU and writes on `posedge` (end of WB), so `mips_pipeline` adds a write-through bypass from WB to the ID read ports (never for `$zero`). It behaves like "write in the first half, read in the second".
+- Until LIFE-6 checks it on the board, the pipeline lives in `hw/rtl/mips_pipeline.v` and the board keeps the single-cycle `mips_cpu`. LIFE-6 replaces `mips_cpu` with it.
 - **Memory stall input:** the whole pipeline freezes while a memory access isn't ready (needed for SDRAM).
 
 ### Delay-slot rule for assembly programs
@@ -41,6 +47,23 @@ GCC-compiled code (Doom) fills its own delay slots and does not go through our a
 
 ### Pipeline registers
 The professor asks to document every pipeline register (CPU-4): **width, enable, reset, valid bit and when it updates**. All of them use the common clock with enables (stall = enable off, flush = valid off). IF/ID keeps the instruction word **and its PC**.
+
+Common rules (`pipeline_register.v`, `if_id_register.v`):
+- **Update:** rising edge of the CPU clock. No gated or derived clocks.
+- **Priority:** synchronous reset > flush > enable > hold.
+- **Reset and flush:** clear the payload and `valid`, even when `enable = 0`.
+- **Enable = 1:** latch the input if it is valid. If not, load a bubble (all zeros, `valid = 0`).
+- **Enable = 0 (stall):** keep the payload **and** `valid`.
+- **Valid bit:** every side effect (memory read/write, register write) is gated with `valid`, so a bubble never changes state.
+
+| Register | Width | Contents |
+|---|---|---|
+| IF/ID | 64 + valid = 65 | PC (32), instruction (32). The instruction memory's output register **is** the instruction field (M9K, no reset): it is masked to `nop` while `valid = 0`, and on a stall it re-reads the address in PC so the word does not change |
+| ID/EX | 115 + valid = 116 | A or the `jal` link value PC + 8 (32), B / store data (32), immediate (32), destination (5), shamt (5), ALU control (4), ALUSrc, RegWrite, MemRead, MemWrite, MemtoReg |
+| EX/MEM | 73 + valid = 74 | ALU result or address (32), store data (32), destination (5), RegWrite, MemRead, MemWrite, MemtoReg |
+| MEM/WB | 38 + valid = 39 | value to write (32, memory or ALU, chosen in MEM), destination (5), RegWrite |
+
+CPU-5 turns off the IF/ID enable and sends a bubble into ID/EX on a stall, CPU-6 redirects the fetch PC (no flush: the delay slot runs), and CPU-9 will turn off every enable while memory isn't ready. The other enables are 1 and no register is flushed.
 
 ## Halt on invalid access (CPU-14)
 The CPU stops in a **visible** way, and the failing instruction writes **nothing** (no register, no memory), when:
@@ -90,7 +113,8 @@ The professor asks for **one byte per address** and big-endian fetch: the word i
   - `<name>_bytes.hex`: one byte per address, big-endian (the professor's loadable image).
   - `<name>_b0.hex` … `<name>_b3.hex`: bank *k* = the bytes at addresses with `addr[1:0] = k`; line *i* is the byte of instruction *i*.
   - `instruction_memory` loads the 4 bank files with `$readmemh` from the prefix in `IMEM_INIT` (e.g. `"../mem/life_board"`), in ModelSim and in Quartus.
-  - The assembler writes them from the ASM (TC-13). Until then, `sw/tools/hex2banks.py` makes them from a word `.hex`.
+  - The assembler writes them from the ASM (TC-13), together with the word image `<name>.hex` and the data image `<name>_data.hex`. Everything goes to `hw/mem/` by default (or to the folder given with `-o`), never to `sw/programs/`. Until then, `sw/tools/hex2banks.py` makes them from a word `.hex`.
+  - **No `.mif` files** for program images: `$readmemh` with `.hex` works the same in ModelSim and Quartus.
 
 ### Memory timing
 All memories read on a clock edge, so Quartus can place them in M9K blocks (a combinational read doesn't fit: 16 KB of flip-flops is more than the whole FPGA).
@@ -142,7 +166,7 @@ Both are dual-port RAMs: the CPU writes, the VGA reads.
 
 ## Tool settings
 - **MARS:** *Settings → Delayed branching* **off**; *Memory Configuration → Default*; Bitmap Display: unit 4×4, display 512 wide, base address `0x10040000 (heap)`.
-- **Quartus (MAX 10):** configuration mode *"Single Uncompressed Image with Memory Initialization"* (required for `.mif` files).
+- **Quartus (MAX 10):** configuration mode *"Single Uncompressed Image with Memory Initialization"* (required to initialize on-chip memory from the `.hex` images).
 - **Instruction RAM:** enable *In-System Memory Content Editor* on the 4 banks to load programs without recompiling.
 - **GCC:** `mips-linux-gnu-gcc` (package `gcc-mips-linux-gnu` in WSL) with `-march=mips1 -msoft-float -mno-abicalls -G0 -EB` (**big-endian**, TC-14).
 - **Assembler:** text base `0x00000000` by default; `--text-base 0x00400000` only to compare with MARS dumps.
