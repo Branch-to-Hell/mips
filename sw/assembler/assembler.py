@@ -36,7 +36,7 @@ REGS = {f'${n}': i for i, n in enumerate(REG_NAMES)}
 REGS['$s8'] = 30                                
 REGS.update({f'${i}': i for i in range(32)})       
 
-TEXT_BASE=0x00400000
+TEXT_BASE=0x00000000
 DATA_BASE=0X10010000
 TEXT_DEPTH = 4096
 DATA_DEPTH = 4096
