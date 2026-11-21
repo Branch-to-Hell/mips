@@ -95,7 +95,23 @@ def check_label(label, labels):
     if label in labels.keys(): #check if the label is valid
         return labels[label]
 
-    raise ValueError(f"invalid label '{label}'")
+    raise ValueError(f"undefined label '{label}'")
+
+def check_target(target, labels):
+    # Branch/jump target: a label or a literal address, word aligned.
+    target = target.strip()
+    if target in labels:
+        addr = labels[target]
+    else:
+        try:
+            addr = int(target, 0)
+        except ValueError:
+            raise ValueError(f"undefined label '{target}'")
+    if addr < 0 or addr > 0xFFFFFFFF:
+        raise ValueError(f"target {target} out of range")
+    if addr % 4 != 0:
+        raise ValueError(f"misaligned target 0x{addr:08X} (must be a multiple of 4)")
+    return addr
 
 def check_range(value, minimum, maximum, name):
     if value < minimum or value > maximum:
@@ -294,7 +310,7 @@ def encode(mn, ops, pc, labels):
             rs = check_register(ops[0])
             rt = check_register(ops[1])
 
-            label = check_label(ops[2], labels)
+            label = check_target(ops[2], labels)
 
             offset = (label - (pc + 4)) // 4 #calculate the offset for the branch instruction
             offset = check_range(offset,-32768,32767,"branch offset")#check if the offset is in the range of -32768 to 32767
@@ -336,13 +352,13 @@ def encode(mn, ops, pc, labels):
 
     if info['type'] == 'J':
         check_operands(ops, 1, mn)
-        label = check_label(ops[0], labels)
+        label = check_target(ops[0], labels)
         op = info['op']
         pc_region = (pc + 4) >> 28
         label_region = label >> 28
 
         if pc_region != label_region:
-          raise ValueError(f"jump target 0x{label:08X} outside 256 MiB region")
+            raise ValueError(f"jump target 0x{label:08X} outside 256 MiB region")
         target = (label >> 2) & 0x3FFFFFF  #calculate the target address for the jump instruction
         return f"{op}{DecBinary(target, 26)}"
 
@@ -418,31 +434,39 @@ def main():
 
     args = ap.parse_args()
     global TEXT_BASE
-    TEXT_BASE = int(args.text_base, 0)
+    try:
+        TEXT_BASE = int(args.text_base, 0)
+    except ValueError:
+        ap.error(f"--text-base: invalid address '{args.text_base}'")
+    if TEXT_BASE < 0 or TEXT_BASE > 0xFFFFFFFF or TEXT_BASE % 4 != 0:
+        ap.error(f"--text-base: 0x{TEXT_BASE:X} must be a 32-bit multiple of 4")
+
     SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__)) #get the directory of the script
     MEM_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "../../hw/mem")) #get the default memory directory
 
     outdir = args.outdir or MEM_DIR
     base = os.path.splitext(os.path.basename(args.source))[0]
 
-    os.makedirs(outdir,exist_ok=True)
-    os.makedirs(MEM_DIR, exist_ok=True)
     with open(args.source) as f:
         lines = f.read().splitlines()
 
     try:
-
-        labels, text, data = first_pass(lines) 
-        prog = second_pass(text, labels) 
+        labels, text, data = first_pass(lines)
+        prog = second_pass(text, labels)
         words = [w for _, w, _ in prog]
-        write_hex(os.path.join(outdir, base + ".hex"), words)
-        write_banks(os.path.join(outdir, base), words) #.byte .b0, b1,b2 and b3
-
-        if data:
-            write_hex( os.path.join( outdir, base + "_data.hex"),data)
+        if len(words) > TEXT_DEPTH:
+            raise ValueError(f"program has {len(words)} instructions, the instruction memory holds {TEXT_DEPTH}")
+        if len(data) > DATA_DEPTH:
+            raise ValueError(f"data has {len(data)} words, the data image holds {DATA_DEPTH}")
     except ValueError as e:
         print(f"Error: {e}")
         sys.exit(1)
+
+    os.makedirs(outdir, exist_ok=True)
+    write_hex(os.path.join(outdir, base + ".hex"), words)
+    write_banks(os.path.join(outdir, base), words) # _bytes, _b0 .. _b3
+    if data:
+        write_hex(os.path.join(outdir, base + "_data.hex"), data)
 
     if args.list:
         print("\nProgram:\n")
@@ -457,4 +481,4 @@ def main():
     print( f"Files generated in: {outdir}")
 
 if __name__ == "__main__":
-     main()
+    main()

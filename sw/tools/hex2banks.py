@@ -1,6 +1,6 @@
 """Convert a word image (.hex, one 32-bit word per line) into the CPU-12 instruction images.
 
-Temporary tool until the assembler writes these files itself (TC-13). Same output format:
+For word images that do not come from our assembler (it writes these files itself, TC-13). Same output format:
 
     <name>_bytes.hex   one byte per address, big-endian (the professor's loadable image)
     <name>_b0.hex      bank 0: bytes at addresses with addr[1:0] = 0 (bits 31..24 of each word)
