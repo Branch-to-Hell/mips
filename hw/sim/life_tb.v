@@ -20,7 +20,7 @@ the program must see them even while it computes a generation (~6 ms).
 */
 module life_tb;
 localparam DB = 50;                    // debounce cycles
-localparam [31:0] GEN_DONE_INSTR = 32'h235A0001;  // addi $k0, $k0, 1
+localparam [31:0] GEN_DONE_INSTR = 32'h275A0001;  // addi $k0, $k0, 1 (professor's addi = opcode 0x09)
 localparam PRESS = 200_000;            // cycles a key is held, and then released
 localparam TIMEOUT = 1_000_000;        // cycles per generation, much more than needed
 
