@@ -10,26 +10,44 @@
 // target. Nothing is flushed. jal writes PC + 8 (the instruction after the
 // delay slot) into $ra. The branch compare and jr read operands in ID, so they
 // stall like any other consumer.
-// CPU-14 still owns access faults.
+// CPU-14: visible halt (contracts.md "Halt on invalid access"). A fetch outside
+// the text region or misaligned is caught when the instruction reaches ID; an
+// lw/sw with mem_fault = 1 or a misaligned address is caught in MEM. The
+// failing instruction writes nothing, older instructions finish, younger ones
+// are dropped, and fetch stops until reset. halted/halt_cause/halt_pc/halt_addr
+// tell the top level what to show.
 // IMEM_INIT is the prefix of four big-endian byte-bank images (_b0..b3.hex).
 // RESET_PC = 0 like mips_cpu (contracts.md: text base 0, CPU-13).
 module mips_pipeline #(
     parameter IMEM_INIT = "",
     parameter REGS_INIT = "",
-    parameter RESET_PC = 32'h0000_0000
+    parameter RESET_PC = 32'h0000_0000   // text base; the text region is 16 KB from here
 )(
     input clk, reset,
     output [31:0] mem_addr, mem_wdata,
     output mem_we, mem_re,
     input [4:0] dbg_sel,
     output [31:0] dbg_value,
-    input [31:0] mem_rdata
+    input [31:0] mem_rdata,
+    // CPU-14: the top-level decoder sets mem_fault when mem_addr is in no region.
+    // The CPU only looks at it while the instruction in MEM is an lw/sw.
+    input mem_fault,
+    output reg halted,             // 1 = stopped by a halt; only reset clears it
+    output reg [1:0] halt_cause,   // 1 = fetch, 2 = lw, 3 = sw (0 = running)
+    output reg [31:0] halt_pc,     // PC of the instruction that failed
+    output reg [31:0] halt_addr    // the bad address (the PC itself for a fetch)
 );
 // CPU-5: a stall holds fetch_pc and IF/ID and sends a bubble into ID/EX
 // (valid_in = 0 below); EX, MEM and WB keep going. CPU-9 will add the
 // whole-pipeline memory wait. No flushes: the delay slot always runs (CPU-6).
+localparam [31:0] TEXT_BASE = RESET_PC;
+
+// CPU-14: stop = a halt is starting now or already happened. Fetch freezes
+// and ID sends only bubbles; EX, MEM and WB drain what is older.
 wire stall;
-wire if_id_enable = !stall, id_ex_enable = 1'b1;
+wire fetch_fault, access_fault;
+wire stop = halted || fetch_fault || access_fault;
+wire if_id_enable = !stall && !stop, id_ex_enable = 1'b1;
 wire ex_mem_enable = 1'b1, mem_wb_enable = 1'b1;
 wire if_id_flush = 1'b0, id_ex_flush = 1'b0;
 wire ex_mem_flush = 1'b0, mem_wb_flush = 1'b0;
@@ -122,22 +140,27 @@ hazard_unit hu(
     .stall(stall)
 );
 
-// ID/EX: 115 payload + 1 valid = 116 bits.
-// Payload: A or jal link value(32), B/store data(32), immediate(32), destination(5), shamt(5),
+// CPU-14: a fetch fault is seen on the instruction in ID: its PC (the address
+// it was fetched from) is outside the 16 KB text region or not word aligned.
+// Every fetched instruction executes (no flush, CPU-6), so this one is real.
+assign fetch_fault = id_valid && ((id_pc[31:14] != TEXT_BASE[31:14]) || (id_pc[1:0] != 2'b00));
+
+// ID/EX: 147 payload + 1 valid = 148 bits.
+// Payload: PC(32, for halt_pc), A or jal link value(32), B/store data(32), immediate(32), destination(5), shamt(5),
 // ALU control(4), ALUSrc(1), RegWrite(1), MemRead(1), MemWrite(1), MemtoReg(1).
 // posedge; enable=0 holds all fields; synchronous reset/flush clears all fields
 // and valid regardless of enable; invalid input inserts a bubble. See primitive.
-wire [31:0] ex_a, ex_b, ex_imm;
+wire [31:0] ex_pc, ex_a, ex_b, ex_imm;
 wire [4:0] ex_shamt;
 wire [3:0] ex_alu_ctl;
 wire ex_alu_src, ex_mem_read, ex_mem_write, ex_mem_to_reg;
-pipeline_register #(.WIDTH(115)) id_ex(
+pipeline_register #(.WIDTH(147)) id_ex(
     .clk(clk), .reset(reset), .enable(id_ex_enable), .flush(id_ex_flush),
-    .valid_in(id_valid && !stall),   // a stalled instruction leaves a bubble
-    .data_in({ex_a_in, ex_b_in, id_imm, ex_dest_in, id_instruction[10:6], id_alu_ctl,
+    .valid_in(id_valid && !stall && !stop),   // stalled or halted: a bubble
+    .data_in({id_pc, ex_a_in, ex_b_in, id_imm, ex_dest_in, id_instruction[10:6], id_alu_ctl,
               alu_src, reg_write, mem_read, mem_write, mem_to_reg}),
     .valid_out(ex_valid),
-    .data_out({ex_a, ex_b, ex_imm, ex_dest, ex_shamt, ex_alu_ctl,
+    .data_out({ex_pc, ex_a, ex_b, ex_imm, ex_dest, ex_shamt, ex_alu_ctl,
                ex_alu_src, ex_reg_write, ex_mem_read, ex_mem_write, ex_mem_to_reg})
 );
 
@@ -149,27 +172,33 @@ alu alu_unit(.ALUctl(ex_alu_ctl), .A(ex_a), .B(ex_alu_src ? ex_imm : ex_b),
 wire [31:0] ex_address = ex_a + ex_imm;
 wire [31:0] ex_value = (ex_mem_read || ex_mem_write) ? ex_address : ex_result;
 
-// EX/MEM: 73 payload + 1 valid = 74 bits.
-// Payload: result/address(32), store data(32), destination(5), RegWrite(1),
+// EX/MEM: 105 payload + 1 valid = 106 bits.
+// Payload: PC(32, for halt_pc), result/address(32), store data(32), destination(5), RegWrite(1),
 // MemRead(1), MemWrite(1), MemtoReg(1).
 // posedge; enable holds all fields; synchronous reset/flush clears payload and
 // valid even while disabled; invalid input inserts a bubble. valid gates bus.
 wire mem_read_ctl, mem_write_ctl, mem_to_reg_ctl;
-wire [31:0] mem_value, mem_store_data;
-pipeline_register #(.WIDTH(73)) ex_mem(
+wire [31:0] mem_pc, mem_value, mem_store_data;
+pipeline_register #(.WIDTH(105)) ex_mem(
     .clk(clk), .reset(reset), .enable(ex_mem_enable), .flush(ex_mem_flush),
-    .valid_in(ex_valid),
-    .data_in({ex_value, ex_b, ex_dest, ex_reg_write, ex_mem_read, ex_mem_write, ex_mem_to_reg}),
+    .valid_in(ex_valid && !access_fault),   // younger than a failing lw/sw: dropped
+    .data_in({ex_pc, ex_value, ex_b, ex_dest, ex_reg_write, ex_mem_read, ex_mem_write, ex_mem_to_reg}),
     .valid_out(mem_valid),
-    .data_out({mem_value, mem_store_data, mem_dest, mem_reg_write, mem_read_ctl, mem_write_ctl, mem_to_reg_ctl})
+    .data_out({mem_pc, mem_value, mem_store_data, mem_dest, mem_reg_write, mem_read_ctl, mem_write_ctl, mem_to_reg_ctl})
 );
 
 // MEM: external memory samples EX/MEM address/data/enables at negedge.
 // Read data arrives before MEM/WB captures it at the following posedge.
+// CPU-14: an lw/sw in MEM fails if the decoder says the address is in no
+// region (mem_fault) or it is not word aligned. It then reaches no device
+// (mem_re/mem_we stay 0) and enters MEM/WB as a bubble, so nothing is written.
+// mem_fault must depend only on mem_addr (not on mem_re/mem_we): no loop.
+wire mem_access = mem_valid && (mem_read_ctl || mem_write_ctl);
+assign access_fault = mem_access && (mem_fault || (mem_value[1:0] != 2'b00));
 assign mem_addr = mem_value;
 assign mem_wdata = mem_store_data;
-assign mem_re = mem_valid && mem_read_ctl && !reset;
-assign mem_we = mem_valid && mem_write_ctl && !reset;
+assign mem_re = mem_valid && mem_read_ctl && !access_fault && !reset;
+assign mem_we = mem_valid && mem_write_ctl && !access_fault && !reset;
 
 // MEM/WB: 38 payload + 1 valid = 39 bits.
 // Payload: selected register value(32), destination(5), RegWrite(1).
@@ -179,8 +208,33 @@ assign mem_we = mem_valid && mem_write_ctl && !reset;
 // Selecting memory/ALU data before this register avoids retaining unused data.
 pipeline_register #(.WIDTH(38)) mem_wb(
     .clk(clk), .reset(reset), .enable(mem_wb_enable), .flush(mem_wb_flush),
-    .valid_in(mem_valid),
+    .valid_in(mem_valid && !access_fault),
     .data_in({mem_to_reg_ctl ? mem_rdata : mem_value, mem_dest, mem_reg_write}),
     .valid_out(wb_valid), .data_out({wb_data, wb_dest, wb_reg_write})
 );
+
+/* CPU-14 halt state. Only reset leaves it.
+An access fault in MEM is always older than a fetch fault in ID, so when both
+happen (in the same cycle, or the lw/sw reaches MEM after a fetch fault while the
+pipeline drains) the access fault is the one reported. After an access fault,
+nothing else can reach MEM, so the report never changes again.
+*/
+always @(posedge clk) begin
+    if (reset) begin
+        halted <= 1'b0;
+        halt_cause <= 2'd0;
+        halt_pc <= 32'd0;
+        halt_addr <= 32'd0;
+    end else if (access_fault) begin
+        halted <= 1'b1;
+        halt_cause <= mem_write_ctl ? 2'd3 : 2'd2;
+        halt_pc <= mem_pc;
+        halt_addr <= mem_value;
+    end else if (fetch_fault && !halted) begin
+        halted <= 1'b1;
+        halt_cause <= 2'd1;
+        halt_pc <= id_pc;
+        halt_addr <= id_pc;
+    end
+end
 endmodule
