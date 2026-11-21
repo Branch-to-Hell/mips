@@ -8,9 +8,12 @@ module if_id_register #(
     output reg valid
 );
 wire [31:0] ram_instruction;
+// Hold without a RAM enable: while enable=0 the RAM re-reads the address of the
+// instruction already in ID (pc), so its output stays the same word. This keeps
+// instruction_memory's interface shared with the single-cycle mips_cpu.
+// During reset/flush the RAM may read anything: valid=0 masks it.
 instruction_memory #(.INIT_FILE(IMEM_INIT)) im(
-    .clk(clk), .enable(enable && !reset && !flush),
-    .Address(fetch_pc), .Instruction(ram_instruction)
+    .clk(clk), .Address(enable ? fetch_pc : pc), .Instruction(ram_instruction)
 );
 assign instruction = valid ? ram_instruction : 32'd0;
 always @(posedge clk) begin
@@ -27,7 +30,7 @@ endmodule
 // The synchronous instruction RAM output IS the 32-bit instruction register.
 // Do not latch it again: that would add a sixth pipeline stage and misalign PC.
 // Update: posedge; RAM reads fetch_pc while pc captures that SAME address.
-// Enable=0 holds RAM output, pc and valid; no clock gating.
+// Enable=0 holds RAM output (by re-reading pc), pc and valid; no clock gating.
 // Priority: synchronous reset > flush > enable > hold.
 // Reset/flush clears pc and valid. RAM output has no reset to preserve M9K
 // inference; instruction is masked to zero while invalid (raw bits are ignored).
