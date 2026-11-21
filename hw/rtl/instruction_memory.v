@@ -12,7 +12,6 @@ module instruction_memory #(
     parameter INIT_FILE = ""
 )(
     input clk,
-    input enable,
     input [31:0] Address, // next PC: the same value that goes into the PC register
     output reg [31:0] Instruction
 );
@@ -33,7 +32,7 @@ wire [11:0] Row = Address[13:2];
 The address is the next PC, so right after the edge Instruction = mem[PC_out]..mem[PC_out+3]
 */
 always @(posedge clk)
-    if (enable) Instruction <= {bank0[Row], bank1[Row], bank2[Row], bank3[Row]};
+    Instruction <= {bank0[Row], bank1[Row], bank2[Row], bank3[Row]};
 
 initial begin
     if (INIT_FILE != "") begin

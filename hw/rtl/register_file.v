@@ -22,16 +22,16 @@ and the instruction memory ends up as logic (no In-System Memory Content Editor)
 */
 (* ramstyle = "logic" *) reg [31:0] registers [0:31];
 
-assign DR1 = (AR1 == 0) ? 32'd0 : registers[AR1];
-assign DR2 = (AR2 == 0) ? 32'd0 : registers[AR2];
-assign DR3 = (AR3 == 0) ? 32'd0 : registers[AR3];
+assign DR1 = registers[AR1];
+assign DR2 = registers[AR2];
+assign DR3 = registers[AR3];
 
 /* $sp starts at the top of the stack region, like in MARS (contracts.md), so programs
 that push on the stack run unchanged. Only $sp: the other registers have no reset value
 */
 localparam [31:0] SP_INIT = 32'h7FFF_EFFC;
 
-always @(negedge clk) begin // pipeline WB; reset has priority over writes
+always @(posedge clk) begin // single-cycle: write at the end of the cycle (data memory reads on negedge)
     if (reset)
         registers[29] <= SP_INIT;
     else if (RegWrite && AW != 5'd0) // write enabled and the address isn't $zero?
