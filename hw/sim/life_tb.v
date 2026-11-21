@@ -196,7 +196,7 @@ initial begin
     for (i = 0; i < 32; i = i + 1) sys.cpu.rf.registers[i] = 0;  // like the FPGA after power-up
     done_addr = 32'hFFFF_FFFF;
     for (i = 0; i < 4096; i = i + 1)
-        if (sys.cpu.im.read_word(i) === GEN_DONE_INSTR) done_addr = 32'h0040_0000 + 4 * i;
+        if (sys.cpu.im.read_word(i) === GEN_DONE_INSTR) done_addr = 32'h0000_0000 + 4 * i;
     if (done_addr == 32'hFFFF_FFFF) $fatal(1, "addi $k0, $k0, 1 not found in the program");
     $display("generation done at %h", done_addr);
 

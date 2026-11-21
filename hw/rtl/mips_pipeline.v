@@ -7,13 +7,13 @@
 // use at least TWO intervening independent instructions (or NOPs).
 // CPU-6 owns branches/jumps and delay slots: they are NOT executable here yet
 // and are decoded as bubbles, never as a spurious jal register write.
-// CPU-11/14 still own opcode aliases and access faults.
+// CPU-14 still owns access faults.
 // IMEM_INIT is the prefix of four big-endian byte-bank images (_b0..b3.hex).
-// RESET_PC matches mips_cpu (MARS text base); CPU-13 moves both to 0.
+// RESET_PC = 0 like mips_cpu (contracts.md: text base 0, CPU-13).
 module mips_pipeline #(
     parameter IMEM_INIT = "",
     parameter REGS_INIT = "",
-    parameter RESET_PC = 32'h0040_0000
+    parameter RESET_PC = 32'h0000_0000
 )(
     input clk, reset,
     output [31:0] mem_addr, mem_wdata,

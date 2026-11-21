@@ -1,7 +1,7 @@
 `timescale 1ns/1ps
 // Full CPU-4 program: independent instructions, memory traffic, and a consumer
 // scheduled with two intervening instructions (WB -> ID write-through bypass).
-// Runs the pipeline with RESET_PC = 0 (the contract's text base, CPU-13).
+// RESET_PC = 0, the contract's text base (CPU-13).
 // Also checks cycle-by-cycle PC/instruction pairing, fill, and reset effects.
 module cpu4_tb;
 reg clk=0, reset=1;
@@ -12,7 +12,7 @@ reg [31:0] words[0:127], values[0:127];
 reg [4:0] targets[0:127];
 reg stores[0:127], loads[0:127];
 reg [31:0] addresses[0:127], store_values[0:127];
-mips_pipeline #(.RESET_PC(32'h0)) dut(.clk(clk),.reset(reset),.mem_addr(mem_addr),.mem_wdata(mem_wdata),
+mips_pipeline dut(.clk(clk),.reset(reset),.mem_addr(mem_addr),.mem_wdata(mem_wdata),
     .mem_we(mem_we),.mem_re(mem_re),.mem_rdata(mem_rdata));
 data_memory dm(.clk(clk),.MemRead(mem_re),.MemWrite(mem_we),.Address(mem_addr),
     .WriteData(mem_wdata),.ReadData(mem_rdata));

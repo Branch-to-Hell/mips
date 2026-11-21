@@ -75,7 +75,7 @@ initial begin
     dut.im.write_word(0, 32'h2015002a);
     reset = 1;
     @(posedge clk); #1;
-    if (dut.PC_out !== 32'h00400000 || dut.Instruction !== 32'h2015002a ||
+    if (dut.PC_out !== 32'h00000000 || dut.Instruction !== 32'h2015002a ||
         dut.rf.registers[31] !== 32'hcafebabe || mem_we !== 0 || mem_re !== 0)
         $fatal(1, "Reset failed to override control flow");
     $display("PASS: CPU-3 %0d directed transfers plus reset", checks);
