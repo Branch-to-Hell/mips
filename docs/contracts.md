@@ -59,8 +59,8 @@ Common rules (`pipeline_register.v`, `if_id_register.v`):
 | Register | Width | Contents |
 |---|---|---|
 | IF/ID | 64 + valid = 65 | PC (32), instruction (32). The instruction memory's output register **is** the instruction field (M9K, no reset): it is masked to `nop` while `valid = 0`, and on a stall it re-reads the address in PC so the word does not change |
-| ID/EX | 115 + valid = 116 | A or the `jal` link value PC + 8 (32), B / store data (32), immediate (32), destination (5), shamt (5), ALU control (4), ALUSrc, RegWrite, MemRead, MemWrite, MemtoReg |
-| EX/MEM | 73 + valid = 74 | ALU result or address (32), store data (32), destination (5), RegWrite, MemRead, MemWrite, MemtoReg |
+| ID/EX | 147 + valid = 148 | PC (32, for `halt_pc`), A or the `jal` link value PC + 8 (32), B / store data (32), immediate (32), destination (5), shamt (5), ALU control (4), ALUSrc, RegWrite, MemRead, MemWrite, MemtoReg |
+| EX/MEM | 105 + valid = 106 | PC (32, for `halt_pc`), ALU result or address (32), store data (32), destination (5), RegWrite, MemRead, MemWrite, MemtoReg |
 | MEM/WB | 38 + valid = 39 | value to write (32, memory or ALU, chosen in MEM), destination (5), RegWrite |
 
 CPU-5 turns off the IF/ID enable and sends a bubble into ID/EX on a stall, CPU-6 redirects the fetch PC (no flush: the delay slot runs), and CPU-9 will turn off every enable while memory isn't ready. The other enables are 1 and no register is flushed.
@@ -71,6 +71,18 @@ The CPU stops in a **visible** way, and the failing instruction writes **nothing
 - an **`lw`/`sw`** goes to an address outside every region of the memory map, or not aligned to 4 (byte/half loads and stores in phase 2 check their own alignment).
 
 When halted: the PC freezes, every write is blocked, and the board shows an error code on the LEDs/HEX. Only reset leaves the halt state. The top-level address decoder decides what is valid, so new regions (SDRAM, mode B) just get added to it.
+
+How `mips_pipeline` does it:
+- **Fetch:** checked when the instruction reaches ID. Its PC must be inside the 16 KB text region and word aligned. Every fetched instruction runs (there is no flush), so the fault is real.
+- **`lw`/`sw`:** checked in MEM. It fails if `mem_fault = 1` (no region) or the address is not word aligned (the CPU checks this itself). `mem_re`/`mem_we` stay at 0 and the instruction goes into MEM/WB as a bubble, so no device and no register is written.
+- **Precise:** older instructions finish, and the failing one and every younger one write nothing. If an older `lw`/`sw` fails after a younger fetch fault (for example a bad `lw` in the delay slot of a `jr` to a bad address), the `lw`/`sw` is the one reported.
+
+| Output | Meaning |
+|---|---|
+| `halted` | 1 = stopped |
+| `halt_cause[1:0]` | 1 = fetch, 2 = `lw`, 3 = `sw` (0 = running) |
+| `halt_pc[31:0]` | PC of the failing instruction |
+| `halt_addr[31:0]` | The bad address (for a fetch, the PC itself) |
 
 ## Memory map
 **Decision:** data, framebuffer, stack and MMIO follow MARS's **Default** memory configuration, so MARS programs run without changes. **Text starts at `0x0000_0000`** because the professor asks for "initial PC = 0" (CPU-13). To compare with a MARS dump (text at `0x0040_0000`), assemble with `--text-base 0x00400000`.
@@ -100,8 +112,8 @@ The hardware doesn't implement the whole 4 GB. The address decoder looks at the 
 | `mem_we` | out | 1 = write (`sw`) |
 | `mem_re` | out | 1 = read (`lw`) |
 | `mem_rdata[31:0]` | in | Data for `lw`, must be valid before the next `posedge` |
-| `mem_fault` | in | 1 = the address isn't in any region or isn't aligned. The CPU halts with no writes (CPU-14) |
-| `halted` | out | 1 = the CPU is stopped by a halt; the top level shows the error code |
+| `mem_fault` | in | 1 = `mem_addr` isn't in any region. It must depend only on `mem_addr` (not on `mem_re`/`mem_we`). The CPU checks alignment itself and halts with no writes (CPU-14) |
+| `halted`, `halt_cause[1:0]`, `halt_pc[31:0]`, `halt_addr[31:0]` | out | The CPU is stopped by a halt, why, where and which address (see "Halt on invalid access"); the top level shows the error code |
 
 Phase 2 adds a `mem_stall` input here (CPU-9).
 
