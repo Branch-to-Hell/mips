@@ -1,5 +1,5 @@
 `timescale 1ns/1ns
-// PLT-3 / LIFE-5 / LIFE-3 test: life_system running life_board.hex. Run from hw/sim: do life.do
+// PLT-3 / LIFE-5 / LIFE-3 / LIFE-4 test: life_system running life_board.hex. Run from hw/sim: do life.do
 /* Reads the 32x24 board back from the framebuffer (every 4x4 block must be all white
 or all black) and compares each generation with a Game of Life model written here.
 Short debounce (50 cycles) so the key presses are fast. Checks:
@@ -11,6 +11,8 @@ Short debounce (50 cycles) so the key presses are fast. Checks:
   6. edit mode (LIFE-3): paused on an empty board, SW9-5/SW4-0 move a red cursor,
      KEY0 toggles cells (a glider is drawn, one cell is toggled on and off again),
      the cursor leaves no trace, and the drawn glider evolves like the model
+  LIFE-4: the live-cell bar on LEDR9-1 (one LED per 32 live cells, rounded up, at most 9)
+     matches the board after loading, while paused, after each toggle and every generation
 While paused the cursor is hidden with SW9-5 = 11000 (row 24) so read_board only sees
 black and white cells.
 The end of a generation is when addi $k0, $k0, 1 reaches EX (found by its
@@ -148,11 +150,32 @@ The board read at the end of the previous generation is the starting point:
 reading it at any other moment could catch draw halfway through
 */
 task check_generation(input integer k);
+    integer prev_alive;
     begin
         save_prev;
+        prev_alive = alive;
         wait_generation(k);
+        // The main loop wrote LEDR after the previous generation's update_leds, before this one ran
+        check_bar(prev_alive, "live-cell bar of the previous generation");
         step_model;
         check_same_as(1, "generation matches the model");
+    end
+endtask
+
+// LIFE-4: LEDR9-1 = ceil(count / 32) LEDs from LEDR1 up, at most 9
+function [8:0] bar(input integer count);
+    integer lit;
+    begin
+        lit = (count + 31) / 32;
+        if (lit > 9) lit = 9;
+        bar = (9'h1 << lit) - 1;
+    end
+endfunction
+
+task check_bar(input integer count, input [8*48-1:0] what);
+    if (LEDR[9:1] !== bar(count)) begin
+        $display("FAIL  %0s: LEDR9-1 = %b for %0d alive (expected %b)", what, LEDR[9:1], count, bar(count));
+        errors = errors + 1;
     end
 endtask
 
@@ -211,6 +234,8 @@ initial begin
     if (!(board[1*32+2] && board[2*32+3] && board[3*32+1] && board[3*32+2] && board[3*32+3]))
         fail("glider cells");
     if (LEDR[0] !== 1'b0) fail("LEDR0 should be off while paused");
+    wait_cycles(20_000);                // update_leds runs after draw (~10,000 cycles)
+    check_bar(alive, "live-cell bar at start");
     if (sys.io.hex_reg !== 0) fail("HEX should be 0 at start");
     if (gens != 0) fail("ran a generation while paused");
 
@@ -248,6 +273,7 @@ initial begin
     wait_cycles(60_000);
     read_board;
     check_cells(0, "empty pattern");
+    check_bar(alive, "live-cell bar, empty pattern");
     if (sys.io.hex_reg !== 0) fail("HEX should go back to 0 after loading");
 
     SW = 10'h330;                       // 11 = R-pentomino
@@ -255,6 +281,7 @@ initial begin
     wait_cycles(60_000);
     read_board;
     check_cells(5, "R-pentomino loaded");
+    check_bar(alive, "live-cell bar, R-pentomino");
     if (!(board[10*32+15] && board[10*32+16] && board[11*32+14] && board[11*32+15] && board[12*32+15]))
         fail("R-pentomino cells");
 
@@ -264,6 +291,9 @@ initial begin
     read_board;
     if (alive < 100 || alive > 300) fail("random pattern density");
     else $display("ok    random pattern (%0d alive, about 1 in 4)", alive);
+    check_bar(alive, "live-cell bar, random pattern");
+    if (LEDR[9:1] == 9'h1FF || LEDR[9:1] == 9'h001) fail("random pattern: the bar should be in between");
+    else $display("ok    live-cell bar: LEDR9-1 = %b for %0d alive", LEDR[9:1], alive);
 
     // 5. A new random board at full speed matches the model
     SW = 10'h31F;                       // 01 = random, fastest
@@ -284,7 +314,9 @@ initial begin
     g = gens;
 
     toggle_cell(0, 0, 1);               // on and off again: toggling works both ways
+    check_bar(1, "live-cell bar follows a toggle on");
     toggle_cell(0, 0, 0);
+    check_bar(0, "live-cell bar follows a toggle off");
     toggle_cell(5, 11, 1);              // glider:  .X. / ..X / XXX  at rows 5-7, columns 10-12
     toggle_cell(6, 12, 1);
     toggle_cell(7, 10, 1);
@@ -297,6 +329,7 @@ initial begin
     wait_cycles(2_000);
     read_board;                         // also fails on any red pixel left behind
     check_cells(5, "edit mode: drawn glider");
+    check_bar(alive, "live-cell bar after drawing");
     if (!(board[5*32+11] && board[6*32+12] && board[7*32+10] && board[7*32+11] && board[7*32+12]))
         fail("drawn glider cells");
     if (gens != g) fail("generations while editing");
@@ -314,8 +347,8 @@ initial begin
         check_cells(5, "drawn glider still has 5 cells");
     end
 
-    if (errors) $fatal(1, "LIFE-5/LIFE-3: %0d error(s)", errors);
-    $display("PASS: PLT-3/LIFE-5/LIFE-3 Game of Life on life_system (15 generations checked)");
+    if (errors) $fatal(1, "LIFE-5/LIFE-3/LIFE-4: %0d error(s)", errors);
+    $display("PASS: PLT-3/LIFE-5/LIFE-3/LIFE-4 Game of Life on life_system (15 generations checked, live-cell bar)");
     $finish;
 end
 endmodule
