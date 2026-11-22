@@ -30,7 +30,7 @@ Results on Nov 21 (all PASS):
 | `cpu11.do` | professor's encodings `0x21 0x23 0x09` and the standard ones | PASS, 20 checks |
 | `cpu14.do`, `halt.do` | CPU-14 invalid accesses, and how the board shows them | PASS (7 cases, 34 checks; decoder 19 addresses) |
 | `cpu6.do` | delay slot: the instruction after a branch/jump always runs | PASS |
-| `check_asm_errors.py` | the 7 `sw/programs/errors/*.asm` examples | 7/7 PASS |
+| `check_asm_errors.py` | the 8 `sw/programs/errors/*.asm` examples | 8/8 PASS |
 
 ## 1. One case per instruction
 
@@ -76,7 +76,7 @@ Covers the whole Phase 1 set (20 instructions plus `addu subu addiu`), so the pr
 
 | Case | Test |
 |---|---|
-| Assembler errors | `python sw/tools/check_asm_errors.py`: the 7 examples in `sw/programs/errors/` (unknown mnemonic, invalid register, duplicate label, undefined label, out of range, `j` outside its 256 MiB region, misaligned target). Each file starts with its expected message; the script checks the message and exit code 1 |
+| Assembler errors | `python sw/tools/check_asm_errors.py`: the 8 examples in `sw/programs/errors/` (unknown mnemonic, invalid register, duplicate label, undefined label, out of range, wrong number of operands, `j` outside its 256 MiB region, misaligned target). Each file starts with its expected message; the script checks the message and exit code 1 |
 | Invalid data access (CPU-14) | `cpu14.do`: 7 cases (fetch outside text, misaligned fetch, `lw`/`sw` with no region and misaligned, precise order), nothing is written. `halt.do`: on `life_system` (the board hardware), `sw` to 0x7FFFF000 halts with LEDR = 0x203 and HEX = `E3F000` |
 
 ## 4. Traces (R, I, J)
