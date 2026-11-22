@@ -155,7 +155,7 @@ Everyone has this ready before picking up a task. Details of each tool's configu
 | TC-7 | Verilator harness for the CPU, same trace format | Victor | P1 | S2 | Runs a program and prints its trace |
 | TC-8 | Trace comparison script: reports the first instruction where CPU and reference disagree | Uriel | P1 | S2 | Points to an injected bug correctly |
 | TC-9 | GCC setup: flags (`-march=mips1 -msoft-float -mno-abicalls -G0`), linker script, `crt0.S` (stack + zero the BSS), ELF → `.hex` | Uriel + Ariel | P1 | S1–S2 | A C "hello pixels" runs in Verilator |
-| TC-10 | Minimal C library (newlib or picolibc) + `sbrk`/heap | Uriel | P1 | S2 | `malloc`, `memcpy`, `printf`-to-nothing work |
+| TC-10 | Minimal C library (our own in `src/c/libc/`: no newlib/picolibc for MIPS in Ubuntu, and their `memcpy` uses `lwl`/`lwr`) + `sbrk`/heap | Uriel | P1 | S2 | `malloc`, `memcpy`, `printf`-to-nothing work |
 | TC-11 | C programs pass the trace comparison (**checkpoint Nov 20**) | Uriel + Victor | P1 | S2 | 3 C programs match with zero differences |
 | TC-12 | Professor drill: unseen MARS program → assemble → load → verify | Uriel + Victor | P0 | S3 | Done in under 15 minutes |
 | TC-13 | Assembler v3: professor's encodings, `--text-base`, byte-per-address image + 4 bank `.hex` (all outputs in `mem/`), listing with instruction text, line diagnostics (`j` region, alignment, duplicate labels) | Uriel | P0 | S2 | Every diagnostic has an example; image regenerates with one command |
