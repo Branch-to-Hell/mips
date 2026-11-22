@@ -43,12 +43,23 @@ loop forever                   # observable end point (self-jump)
 Plus `lui` (extension, documented) only to build the data address 0x10010000.
 
 ## Three inputs
-| # | File | n | target | array | Expected result | Observed |
-|---|---|---|---|---|---|---|
-| 1 | count_value_in1.asm | 8 | 3 | 3, -1, 3, 3, -1, 0, 3, 5 | 4 | **4** (MARS, Value +8 = 0x00000004) |
-| 2 | count_value_in2.asm | 4 | 7 | 7, 7, 7, 7 | 4 | **4** (MARS, Value +8 = 0x00000004) |
-| 3 | count_value_in3.asm (edge: empty array) | 0 | 5 | (none) | 0 | **0** (MARS, Value +8 = 0x00000000) |
+Programs in `sw/programs/`. "Observed" is our pipelined CPU (`life_system`, the same hardware as the board), from `hw/sim/tc15.do`; MARS gives the same values.
 
-## How to reproduce (MARS)
-1. Open the file, Assemble (F3), Run, wait 2 seconds, Stop.
-2. In the Data Segment open `0x10010000 (.data)`: the third word (`+8`) is the result.
+| # | File | n | target | array | Expected result | Observed (our CPU) |
+|---|---|---|---|---|---|---|
+| 1 | `count_value_in1.asm` | 8 | 3 | 3, -1, 3, 3, -1, 0, 3, 5 | 4 | **4** (self-jump after 118 cycles) |
+| 2 | `count_value_in2.asm` | 4 | 7 | 7, 7, 7, 7 | 4 | **4** (self-jump after 66 cycles) |
+| 3 | `count_value_in3.asm` (edge: empty array) | 0 | 5 | (none) | 0 | **0** (self-jump after 16 cycles) |
+
+## How to reproduce
+**Assemble** (from the repo root), for k = 1, 2, 3:
+```
+python sw/assembler/assembler.py sw/programs/count_value_in<k>.asm
+```
+This writes `hw/mem/count_value_in<k>_b0..b3.hex` (code) and `hw/mem/count_value_in<k>_data.hex` (`.data`: n, target, result, array).
+
+**Simulation (ModelSim):** from `hw/sim`, `do tc15.do`. It runs the 3 inputs on `life_system` and checks the result word, that n and target are unchanged, the self-jump, and the count on the HEX debug view.
+
+**Board:** Quartus revision `program` (`hw/rtl/top_program.v`). In `hw/quartus/program.qsf` set `set_parameter -name PROGRAM "count_value_in<k>"` (and `WITH_DATA 1`), compile, program the board. The program ends in `j end` with the result stored. To see it: SW9 up and SW4-0 = 01011 (register 11, `$t3` = count), HEX3-0 = the count. A CPU halt would show `E` on HEX5 and LEDR9 on.
+
+**MARS:** open the file, Assemble (F3), Run, wait 2 seconds, Stop. In the Data Segment (`0x10010000 (.data)`), the third word (`+8`) is the result.
