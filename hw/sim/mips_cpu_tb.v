@@ -29,8 +29,8 @@ endtask
 initial begin
     reset = 1;
     #10;
-    if (dut.PC_out !== 32'h0040_0000) begin
-        $display("FAIL  PC after reset = %h (expected 00400000)", dut.PC_out);
+    if (dut.PC_out !== 32'h0000_0000) begin
+        $display("FAIL  PC after reset = %h (expected 00000000)", dut.PC_out);
         errors = errors + 1;
     end
     reset = 0;

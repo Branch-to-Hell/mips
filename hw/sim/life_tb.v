@@ -20,7 +20,7 @@ the program must see them even while it computes a generation (~6 ms).
 */
 module life_tb;
 localparam DB = 50;                    // debounce cycles
-localparam [31:0] GEN_DONE_INSTR = 32'h235A0001;  // addi $k0, $k0, 1
+localparam [31:0] GEN_DONE_INSTR = 32'h275A0001;  // addi $k0, $k0, 1 (professor's addi = opcode 0x09)
 localparam PRESS = 200_000;            // cycles a key is held, and then released
 localparam TIMEOUT = 1_000_000;        // cycles per generation, much more than needed
 
@@ -196,7 +196,7 @@ initial begin
     for (i = 0; i < 32; i = i + 1) sys.cpu.rf.registers[i] = 0;  // like the FPGA after power-up
     done_addr = 32'hFFFF_FFFF;
     for (i = 0; i < 4096; i = i + 1)
-        if (sys.cpu.im.read_word(i) === GEN_DONE_INSTR) done_addr = 32'h0040_0000 + 4 * i;
+        if (sys.cpu.im.read_word(i) === GEN_DONE_INSTR) done_addr = 32'h0000_0000 + 4 * i;
     if (done_addr == 32'hFFFF_FFFF) $fatal(1, "addi $k0, $k0, 1 not found in the program");
     $display("generation done at %h", done_addr);
 

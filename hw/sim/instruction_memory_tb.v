@@ -8,7 +8,7 @@ For each fetch: the 4 bytes mem[PC]..mem[PC+3], the joined word, and that the
 word only changes on the clock edge.
 */
 module instruction_memory_tb;
-localparam N = 232; // instructions in life_board.hex
+localparam N = 287; // instructions in life_board.hex
 
 reg clk = 0;
 reg [31:0] Address = 0;
