@@ -12,7 +12,7 @@ The four folders the professor asks for:
 | [`rtl/`](rtl/) | All the Verilog: the CPU (`mips_pipeline.v` and its modules, the single-cycle `mips_cpu.v`), memories, MMIO, VGA and the board top-levels (`top_*.v`) |
 | [`verif/`](verif/) | Testbenches (`*_tb.v`) and their ModelSim scripts (`*.do`). [`verif/traces/`](verif/traces/): the annotated R, I and J traces (TC-16). [`verif/results/`](verif/results/): expected vs observed results |
 | [`docs/`](docs/) | Plan, workflow, technical contracts, test coverage (`tc16/`), the graded algorithm (`tc15_algorithm.md`), lab checklists and [`docs/evidence/`](docs/evidence/) (board photos and videos, individual sheets) |
-| [`src/`](src/) | Everything that is not Verilog: [`src/assembler/`](src/assembler/) (our assembler), [`src/programs/`](src/programs/) (assembly programs), [`src/tools/`](src/tools/) (reference simulator, professor drill, converters), `src/doom/` |
+| [`src/`](src/) | Everything that is not Verilog: [`src/assembler/`](src/assembler/) (our assembler), [`src/programs/`](src/programs/) (assembly programs), [`src/c/`](src/c/) (C programs: GCC setup, `crt0.S`, linker script), [`src/tools/`](src/tools/) (reference simulator, professor drill, converters), `src/doom/` |
 
 Three extra folders that don't fit those four:
 
@@ -40,6 +40,10 @@ vsim -c -do "do tc4.do; quit -f"
 ```
 
 Build a board image: open `quartus/mips.qpf`, pick the revision and compile. For any program on the pipelined CPU use the `program` revision (see `quartus/program.qsf`).
+
+Build the C programs (GCC, in WSL): `make -C src/c` (writes `mem/<name>*.hex` too, see [`src/c/README.md`](src/c/README.md)).
+
+Run a program in Verilator and compare its trace with the reference simulator (WSL): `make -C verif/verilator compare PROG=<name>` (see [`verif/verilator/README.md`](verif/verilator/README.md)).
 
 Run an unseen MARS program on our CPU (assembler, MARS and ModelSim, compared): `python src/tools/drill.py <program.asm>` (see [`docs/tc12_drill.md`](docs/tc12_drill.md)).
 
