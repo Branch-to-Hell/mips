@@ -3,7 +3,7 @@ import os
 import sys
 
 isa = {
-    # --- R-type, opcode 000000 ---
+    # --- R-type (opcode 000000, except mul: SPECIAL2 011100) ---
     'add':   {'type': 'R', 'op': '000000', 'shamt': '00000', 'FAC': '100001'},
     'addu':  {'type': 'R', 'op': '000000', 'shamt': '00000', 'FAC': '100001'},
     'sub':   {'type': 'R', 'op': '000000', 'shamt': '00000', 'FAC': '100011'},
@@ -31,6 +31,7 @@ isa = {
     'div':   {'type': 'R', 'op': '000000', 'shamt': '00000', 'FAC': '011010'},
     'divu':  {'type': 'R', 'op': '000000', 'shamt': '00000', 'FAC': '011011'},
     'mul':   {'type': 'R', 'op': '011100', 'shamt': '00000', 'FAC': '000010'},
+    # --- I-type (bltz/bgez: REGIMM 000001, the fixed rt picks the branch) ---
     'addi':  {'type': 'I', 'op': '001001'},
     'addiu': {'type': 'I', 'op': '001001'},
     'slti':  {'type': 'I', 'op': '001010'},
@@ -53,6 +54,7 @@ isa = {
     'bgtz':  {'type': 'I', 'op': '000111'},
     'bltz':  {'type': 'I', 'op': '000001', 'rt': '00000'},
     'bgez':  {'type': 'I', 'op': '000001', 'rt': '00001'},
+    # --- J-type ---
     'j':     {'type': 'J', 'op': '000010'},
     'jal':   {'type': 'J', 'op': '000011'},
 }
@@ -341,7 +343,7 @@ def encode(mn, ops, pc, labels):
 
     if info['type'] == 'I': #check if the instruction is of type I
 
-        if mn in ['lw', 'sw', 'lb', 'lbu', 'lh', 'lhu', 'sb', 'sh']:#check if the instruction is of type lw or sw
+        if mn in ['lw', 'sw', 'lb', 'lbu', 'lh', 'lhu', 'sb', 'sh']:  # loads and stores: rt, offset(rs)
 
             check_operands(ops, 2, mn)
             op = info['op']
@@ -392,7 +394,7 @@ def encode(mn, ops, pc, labels):
             inm = check_range(
             check_immediate(ops[1]),0,65535,"immediate")
             return f"{op}{DecBinary(0,5)}{DecBinary(rt,5)}{DecBinary(inm,16)}"
-        elif mn in ["addi", "slti", "addiu", "sltiu"]:#check if the instruction is of type addi or slti
+        elif mn in ["addi", "slti", "addiu", "sltiu"]:  # signed 16-bit immediate
             check_operands(ops, 3, mn)
             rt = check_register(ops[0])
             rs = check_register(ops[1])
@@ -407,7 +409,7 @@ def encode(mn, ops, pc, labels):
             op = info["op"]
 
             return f"{op}{DecBinary(rs,5)}{DecBinary(rt,5)}{DecBinary(inm,16)}"
-        else:#check if the instruction is of type andi or ori
+        else:  # andi ori xori: unsigned 16-bit immediate
 
             check_operands(ops, 3, mn)
             rt = check_register(ops[0])

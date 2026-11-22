@@ -1,6 +1,9 @@
 # Self-checking test for the phase 2 ISA.
 # Every result is stored in its own word of results[] (word index r[i] is at
-# offset 4*i from $s7). Nothing is overwritten. Expected values: see README.md.
+# offset 4*i from $s7). Nothing is overwritten. Expected values: see
+# sw/assembler/README.md ("Expected values of test_phase2.asm").
+# Byte order is big-endian (contracts.md), so in MARS (little-endian) r[11..15]
+# differ from the table. On our CPU it runs once phase 2 is in the RTL (CPU-7).
 # Branch checks: the good value is set before the branch; a wrong path
 # writes 99 (taken when it should not be, or not taken when it should).
 
@@ -64,7 +67,7 @@ main:
 
     # ---------------------------------
     # LB, LBU, LH and LHU -> r[11..14]
-    # Data: 0x80FF7F01, big-endian
+    # Data: 0x80FF7F01, big-endian (byte 0 = 0x80)
     # ---------------------------------
     lb  $t2, 0($s0)             # 0xFFFFFF80
     sw  $t2, 44($s7)

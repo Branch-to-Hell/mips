@@ -24,8 +24,8 @@ Files go to `hw/mem/` by default, or to the `-o` folder. Nothing is written to `
 
 | File                              | Content                                                                                                                                                      |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `<name>.hex`                      | Word image: one 32-bit instruction per line.                                            |
-| `<name>_bytes.hex`                | One byte per address, big-endian: line _n_ is the byte at `text_base + n`. This is the professor's loadable image.                                                                                   |
+| `<name>.hex`                      | Word image: one 32-bit instruction per line.                                                                                                                 |
+| `<name>_bytes.hex`                | One byte per address, big-endian: line _n_ is the byte at `text_base + n`. This is the professor's loadable image.                                           |
 | `<name>_b0.hex` … `<name>_b3.hex` | The 4 instruction memory banks (CPU-12). Bank _k_ holds the bytes with `addr[1:0] = k`, so line _i_ is one byte of instruction _i_. `_b0` holds bits 31..24. |
 | `<name>_data.hex`                 | `.data` segment, one word per line, starting at `0x10010000`. Only written if the program has `.data`.                                                       |
 
@@ -77,20 +77,30 @@ The pipelined CPU has one branch delay slot. The assembler inserts a `nop` after
 
 ## Byte order
 
-Data memory is big-endian: the byte at the lowest address is the most significant, as the contracts specify. This matters for `lb`, `lbu`, `lh`, `lhu`, `sb` and `sh`. MARS is little-endian by default.
+Data memory is big-endian: the byte at the lowest address is the most significant, as `docs/contracts.md` specifies. This matters for `lb`, `lbu`, `lh`, `lhu`, `sb` and `sh`. MARS is little-endian, so a program that reads or writes single bytes or halfwords gives different values in MARS than on our CPU (see _Known differences with MARS_). The assembler itself does not depend on byte order: the same `.asm` gives the same words.
 
 ## Tests
 
 All programs are in `sw/programs/`. The two self-checking ISA tests are documented in this section. The other programs (`t1`–`t3`, `tc4_*`, `life*`, `test_mmio`, `test_stack`, and so on) are CPU programs used by the testbenches and the hardware images.
 
-Each self-checking test stores its results in data memory and has its expected values written below. Run it in MARS or on the CPU and compare the final data memory with the table.
+Each self-checking test stores its results in data memory and has its expected values written below.
 
-| Program                        | What it checks                                                                                                                                                         |
-| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `test_pseudoinstrucciones.asm` | `li`, `la`, `move`, `nop`, `lw`, `sw`. Expected: the word `result` = `125` (`0x0000007D`).                                                                             |
-| `test_new_instruction.asm`     | Every instruction of phase 2 that is not already in phase 1, including the branches and jumps. Each result has its own word in `results`, starting at `results + 4*i`. |
+| Program            | What it checks                                                                                                                                                         | Where it runs today                                                     |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `test_pseudo.asm`  | `li`, `la`, `move`, `nop`, `lw`, `sw`. Expected: the word `result` = `125` (`0x0000007D`).                                                                             | MARS and our CPU (phase 1 only)                                         |
+| `test_phase2.asm`  | Every instruction of phase 2 that is not already in phase 1, including the branches and jumps. Each result has its own word in `results`, starting at `results + 4*i`. | MARS (except r[11..15], see below). Our CPU once phase 2 is in (CPU-7) |
 
-### Expected values of `test_new_instruction.asm`
+**On our CPU:** `drill.py` (TC-12) assembles the program, runs it in MARS and on `mips_pipeline` in ModelSim, and compares registers and data memory:
+
+```
+python sw/tools/drill.py sw/programs/test_pseudo.asm
+```
+
+It must end with `PASS`. This is the check that MARS programs (delayed branching off) run unchanged on our CPU.
+
+**In MARS:** run the program and look at the data segment (or from the command line: `java -jar Mars4_5.jar nc 2000 0x10010000-0x100100a0 sw/programs/test_phase2.asm`).
+
+### Expected values of `test_phase2.asm`
 
 `results` starts at the label `results`. Word _i_ is at offset `4*i` from it.
 
@@ -134,6 +144,8 @@ Each self-checking test stores its results in data memory and has its expected v
 | r[35] | 140    | `00000001`           | `j` skips the store of 99                             |
 | r[36] | 144    | `00000005`           | `jalr` calls `function`, which sets 5, then returns   |
 
+The table gives the values on our CPU (big-endian). MARS is little-endian, so there r[11..15] are `00000001`, `0000007F`, `00007F01`, `000080FF` and `12340055`. That is expected, not a bug. All the other words are the same in MARS.
+
 A branch check works like this: the good value (1 or 2) is set before the branch, and the wrong path writes 99. If the branch goes the wrong way, the word holds 99 and the check fails. Each check has its own word, so no result is overwritten.
 
 The program then loops in `end:` (`j end`).
@@ -149,7 +161,7 @@ Then compare the two `.hex` files (`fc.exe` on Windows, `diff` elsewhere). The d
 
 ## Known differences with MARS
 
-These differences are expected. They do not change the result of the program.
+These differences in the code are expected. They do not change the result of the program.
 
 - `li` with a large value and `la` expand to `lui` + `ori` using the destination register. MARS uses `$at` as the intermediate register.
 - `move rd, rs` becomes `add rd, rs, $zero`. MARS uses `addu rd, $zero, rs`.
@@ -157,20 +169,24 @@ These differences are expected. They do not change the result of the program.
 - The assembler inserts one `nop` after every jump and branch (the delay slot). MARS does not insert it.
 - Labels and addresses that come after an inserted `nop` have different values than in MARS.
 
+This one does change results: MARS is little-endian and our CPU is big-endian, so `lb`, `lbu`, `lh`, `lhu`, `sb` and `sh` see different bytes (see _Byte order_).
+
 ## Diagnostics
 
 Errors stop the assembler with the line number and exit code 1. Each one has an example in `sw/programs/errors/`. The first line of each `errors/*.asm` file is `# Expected:` followed by the exact message the assembler must print.
 
-|Error|Example|
-|---|---|
-|Unknown mnemonic|`unknown_mnemonic.asm`|
-|Unknown register|`invalid_register.asm`|
-|Duplicate label|`duplicate_label.asm`|
-|Undefined label|`undefined_label.asm`|
-|Operand out of range (immediate, offset, shift, branch distance)|`out_of_range.asm`|
-|Wrong number of operands|(e.g. `bltz $a0` without a target)|
-|`j`/`jal` target outside the 256 MiB region of `PC + 4`|`jump_region_edge.asm`|
-|Branch or jump target not a multiple of 4|`misaligned.asm`|
+| Error                                                            | Example                   |
+| ---------------------------------------------------------------- | ------------------------- |
+| Unknown mnemonic                                                 | `unknown_mnemonic.asm`    |
+| Unknown register                                                 | `invalid_register.asm`    |
+| Duplicate label                                                  | `duplicate_label.asm`     |
+| Undefined label                                                  | `undefined_label.asm`     |
+| Operand out of range (immediate, offset, shift, branch distance) | `out_of_range.asm`        |
+| Wrong number of operands                                         | `wrong_operand_count.asm` |
+| `j`/`jal` target outside the 256 MiB region of `PC + 4`          | `jump_region_edge.asm`    |
+| Branch or jump target not a multiple of 4                        | `misaligned.asm`          |
+
+`python sw/tools/check_asm_errors.py` runs every example and checks the message and exit code 1.
 
 Example:
 
