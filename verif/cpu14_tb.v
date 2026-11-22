@@ -28,7 +28,7 @@ wire mem_fault = !in_data;
 
 mips_pipeline dut(.clk(clk), .reset(reset), .mem_addr(mem_addr), .mem_wdata(mem_wdata),
     .mem_we(mem_we), .mem_re(mem_re), .mem_be(mem_be), .mem_rdata(mem_rdata), .dbg_sel(5'd0), .dbg_value(),
-    .mem_fault(mem_fault), .halted(halted), .halt_cause(halt_cause),
+    .mem_fault(mem_fault), .mem_stall(1'b0), .ifetch_addr(), .ifetch_req(), .ifetch_data(32'd0), .ifetch_ready(1'b0), .halted(halted), .halt_cause(halt_cause),
     .halt_pc(halt_pc), .halt_addr(halt_addr));
 data_memory dm(.clk(clk), .MemRead(mem_re), .MemWrite(mem_we), .ByteEnable(mem_be), .Address(mem_addr),
     .WriteData(mem_wdata), .ReadData(mem_rdata));

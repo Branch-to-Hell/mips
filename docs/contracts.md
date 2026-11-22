@@ -46,7 +46,7 @@ Pseudo-instructions handled by our assembler: `li la move nop`.
   - `jal` writes **`PC + 8`** into `$ra` (the instruction after the delay slot), and so do `jalr` (into `rd`) and `bltzal/bgezal`. The single-cycle `mips_cpu` has no delay slot and writes `PC + 4`.
 - An instruction in WB is visible to the instruction in ID **in the same cycle**. The register file is shared with the single-cycle CPU and writes on `posedge` (end of WB), so `mips_pipeline` adds a write-through bypass from WB to the ID read ports (never for `$zero`). It behaves like "write in the first half, read in the second".
 - **LIFE-6:** `life_system` (so `top_life` and `top_video_b_test`) runs `mips_pipeline`. The single-cycle `mips_cpu` stays in the repo for its own testbenches and `top_mmio_test`; the board fallback is the single-cycle `.sof` saved before the switch.
-- **Memory stall input:** the whole pipeline freezes while a memory access isn't ready (needed for SDRAM).
+- **Waiting for memory (CPU-9):** the pipeline freezes while a load/store isn't done, and IF waits for an instruction from the SDRAM (see "Waiting for memory").
 
 ### Delay-slot rule for assembly programs
 Programs written for MARS (with *Delayed branching* **off**) assume no delay slot. **Our assembler inserts a `nop` after every branch and jump**, so those programs run unchanged. No other NOPs are needed: the hazard unit handles dependencies.
@@ -74,7 +74,7 @@ Common rules (`pipeline_register.v`, `if_id_register.v`):
 
 HI and LO are not pipeline registers: they live in `mult_div` (EX) and are written only by an instruction that completes (valid, not dropped by a halt).
 
-CPU-5 turns off the IF/ID enable and sends a bubble into ID/EX on a stall, CPU-6 redirects the fetch PC (no flush: the delay slot runs), and CPU-9 will turn off every enable while memory isn't ready. The other enables are 1 and no register is flushed.
+CPU-5 turns off the IF/ID enable and sends a bubble into ID/EX on a stall, CPU-6 redirects the fetch PC (no flush: the delay slot runs), and CPU-9 turns off the enables of fetch, IF/ID, ID/EX and EX/MEM while `mem_stall` = 1 (MEM/WB gets a bubble), and holds IF/ID while a fetch isn't ready (ID/EX gets a bubble). No register is flushed.
 
 ## Halt on invalid access (CPU-14)
 The CPU stops in a **visible** way, and the failing instruction writes **nothing** (no register, no memory), when:
@@ -128,8 +128,10 @@ The CPU has no memory inside except the instruction memory. Loads and stores go 
 | `halted`, `halt_cause[1:0]`, `halt_pc[31:0]`, `halt_addr[31:0]` | out | The CPU is stopped by a halt, why, where and which address (see "Halt on invalid access"); the top level shows the error code |
 
 **Waiting for memory (CPU-9).** The SDRAM answers in several cycles, so the CPU can wait in two places:
-- `mem_stall` (in): the load/store in MEM is not done yet. The whole pipeline holds (every pipeline register keeps its payload and `valid`) until it drops. On-chip devices never raise it.
-- **Fetch wait:** when the PC is in the SDRAM region, the instruction comes from the instruction cache (PLT-12). On a miss, IF holds and ID gets bubbles until the line arrives, like a hazard stall. The CPU-14 fetch check accepts both text regions: the 16 KB on chip and the SDRAM.
+- `mem_stall` (in): the load/store in MEM is not done this cycle. Fetch, IF/ID, ID/EX and EX/MEM hold, so `mem_addr`, `mem_wdata`, `mem_be`, `mem_re` and `mem_we` stay the same; MEM/WB gets a bubble (the instruction already in WB writes once). The read data is taken on the edge where `mem_stall` = 0. HI/LO don't start an operation while it is 1. On-chip devices never raise it.
+- **Fetch wait** (`mips_pipeline` parameter `EXT_TEXT` = 1): a PC in the external text region (`EXT_TEXT_BASE` = `0x2000_0000`, 2^`EXT_TEXT_BITS` = 64 MB) is fetched through `ifetch_addr`/`ifetch_req` → `ifetch_data`/`ifetch_ready`, the instruction cache's port (PLT-12). IF/ID takes the word on the edge where `ifetch_ready` = 1, and it must stay valid while `ifetch_addr` doesn't change (a hit does). Until then IF and ID hold and ID/EX gets bubbles, like a hazard stall, so a branch stays in ID until its delay slot is fetched. The CPU-14 fetch check accepts both text regions: the 16 KB on chip (`TEXT_BASE`) and the external one. `RESET_PC` (default `TEXT_BASE`) is the first fetch.
+- **`life_system`** with `EXT_BUS` = 1 decodes the SDRAM region (`ext_sel`, no fault) and has the ports for the external side: the CPU's bus (`bus_*`), `ext_rdata` (OR'd into the read bus, 0 unless answering), `ext_stall` (→ `mem_stall`) and the fetch port. With `EXT_BUS` = 0 (`top_life`, `top_program`) the region faults and nothing ever waits.
+- Tested in Verilator with random waits: `make -C verif/verilator compare PROG=<name> STALL=<percent>` and `compare-ext` (the program runs from `0x2000_0000`, every fetch through the port, `FETCH=<max delay>`); see `verif/verilator/README.md`.
 
 **Devices and `mem_be`** (wired in `life_system`):
 - `data_memory` (data and stack): 4 byte-lane banks like the instruction memory, one write enable per byte (`ByteEnable` port). Word stores must still be aligned there (the single-cycle `mips_cpu` relies on it to ignore a misaligned `sw`).

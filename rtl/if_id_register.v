@@ -5,7 +5,11 @@ module if_id_register #(
     input [31:0] fetch_pc,
     output reg [31:0] pc,
     output [31:0] instruction,
-    output reg valid
+    output reg valid,
+    // CPU-9: fetch_pc is in the external text region; the word is ext_instruction
+    // (from the instruction cache), taken on the same edge as the PC
+    input fetch_ext,
+    input [31:0] ext_instruction
 );
 wire [31:0] ram_instruction;
 // Hold without a RAM enable: while enable=0 the RAM re-reads the address of the
@@ -15,14 +19,19 @@ wire [31:0] ram_instruction;
 instruction_memory #(.INIT_FILE(IMEM_INIT)) im(
     .clk(clk), .Address(enable ? fetch_pc : pc), .Instruction(ram_instruction)
 );
-assign instruction = valid ? ram_instruction : 32'd0;
+reg from_ext = 1'b0;          // the instruction in ID came from the external port
+reg [31:0] ext_q = 32'd0;     // and this is it (held like pc while enable = 0)
+assign instruction = !valid ? 32'd0 : from_ext ? ext_q : ram_instruction;
 always @(posedge clk) begin
     if (reset || flush) begin
         pc <= 32'd0;
         valid <= 1'b0;
+        from_ext <= 1'b0;
     end else if (enable) begin
         pc <= fetch_pc;
         valid <= 1'b1;
+        from_ext <= fetch_ext;
+        ext_q <= ext_instruction;
     end
 end
 endmodule

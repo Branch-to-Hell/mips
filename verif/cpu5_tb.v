@@ -15,7 +15,7 @@ reg [31:0] expected_reg [0:31];
 localparam EXPECTED_STALLS = 21;
 
 mips_pipeline dut(.clk(clk), .reset(reset), .mem_addr(mem_addr), .mem_wdata(mem_wdata),
-    .mem_we(mem_we), .mem_re(mem_re), .mem_rdata(mem_rdata), .mem_fault(1'b0), .dbg_sel(5'd0), .dbg_value());
+    .mem_we(mem_we), .mem_re(mem_re), .mem_rdata(mem_rdata), .mem_fault(1'b0), .mem_stall(1'b0), .ifetch_addr(), .ifetch_req(), .ifetch_data(32'd0), .ifetch_ready(1'b0), .dbg_sel(5'd0), .dbg_value());
 data_memory dm(.clk(clk), .MemRead(mem_re), .MemWrite(mem_we), .ByteEnable(4'b1111), .Address(mem_addr),
     .WriteData(mem_wdata), .ReadData(mem_rdata));
 always #5 clk = ~clk;
