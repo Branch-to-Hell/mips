@@ -2,31 +2,63 @@ import argparse
 import os
 import sys
 
-isa={
-    'add': {'type': 'R', 'op': '000000','shamt': '00000','FAC': '100001'},
-    'addu': {'type': 'R', 'op': '000000','shamt': '00000','FAC': '100001'},
-    'sub': {'type': 'R', 'op': '000000','shamt': '00000','FAC': '100011'},
-    'subu': {'type': 'R', 'op': '000000','shamt': '00000','FAC': '100011'},
-    'and': {'type': 'R', 'op': '000000','shamt': '00000','FAC': '100100'},
-    'or':  {'type': 'R', 'op': '000000','shamt': '00000','FAC': '100101'},
-    'slt': {'type': 'R', 'op': '000000','shamt': '00000','FAC': '101010'},
-    'nor': {'type': 'R', 'op': '000000','shamt': '00000','FAC': '100111'},
-    'sll': {'type': 'R', 'op': '000000','shamt': '00000','FAC': '000000'},
-    'srl': {'type': 'R', 'op': '000000','shamt': '00000','FAC': '000010'},
-    'jr':  {'type': 'R', 'op': '000000','shamt': '00000','FAC': '001000'},
-    'addi':{'type':'I','op':'001001'},
-    'addiu':{'type':'I','op':'001001'},
-    'andi':{'type':'I','op':'001100'},
-    'ori': {'type': 'I', 'op': '001101'},
-    'slti': {'type': 'I', 'op': '001010'},
-    'lw':  {'type': 'I', 'op': '100011'},
-    'sw':  {'type': 'I', 'op': '101011'},
-    'beq': {'type': 'I', 'op': '000100'},
-    'lui': {'type': 'I', 'op': '001111'},
-    'bne': {'type': 'I', 'op': '000101'},
-    'j':   {'type': 'J', 'op': '000010'},
-    'jal': {'type': 'J', 'op': '000011'}
+isa = {
+    # --- R-type (opcode 000000, except mul: SPECIAL2 011100) ---
+    'add':   {'type': 'R', 'op': '000000', 'shamt': '00000', 'FAC': '100001'},
+    'addu':  {'type': 'R', 'op': '000000', 'shamt': '00000', 'FAC': '100001'},
+    'sub':   {'type': 'R', 'op': '000000', 'shamt': '00000', 'FAC': '100011'},
+    'subu':  {'type': 'R', 'op': '000000', 'shamt': '00000', 'FAC': '100011'},
+    'and':   {'type': 'R', 'op': '000000', 'shamt': '00000', 'FAC': '100100'},
+    'or':    {'type': 'R', 'op': '000000', 'shamt': '00000', 'FAC': '100101'},
+    'xor':   {'type': 'R', 'op': '000000', 'shamt': '00000', 'FAC': '100110'},
+    'nor':   {'type': 'R', 'op': '000000', 'shamt': '00000', 'FAC': '100111'},
+    'slt':   {'type': 'R', 'op': '000000', 'shamt': '00000', 'FAC': '101010'},
+    'sltu':  {'type': 'R', 'op': '000000', 'shamt': '00000', 'FAC': '101011'},
+    'sll':   {'type': 'R', 'op': '000000', 'shamt': '00000', 'FAC': '000000'},
+    'srl':   {'type': 'R', 'op': '000000', 'shamt': '00000', 'FAC': '000010'},
+    'sra':   {'type': 'R', 'op': '000000', 'shamt': '00000', 'FAC': '000011'},
+    'sllv':  {'type': 'R', 'op': '000000', 'shamt': '00000', 'FAC': '000100'},
+    'srlv':  {'type': 'R', 'op': '000000', 'shamt': '00000', 'FAC': '000110'},
+    'srav':  {'type': 'R', 'op': '000000', 'shamt': '00000', 'FAC': '000111'},
+    'jr':    {'type': 'R', 'op': '000000', 'shamt': '00000', 'FAC': '001000'},
+    'jalr':  {'type': 'R', 'op': '000000', 'shamt': '00000', 'FAC': '001001'},
+    'mfhi':  {'type': 'R', 'op': '000000', 'shamt': '00000', 'FAC': '010000'},
+    'mthi':  {'type': 'R', 'op': '000000', 'shamt': '00000', 'FAC': '010001'},
+    'mflo':  {'type': 'R', 'op': '000000', 'shamt': '00000', 'FAC': '010010'},
+    'mtlo':  {'type': 'R', 'op': '000000', 'shamt': '00000', 'FAC': '010011'},
+    'mult':  {'type': 'R', 'op': '000000', 'shamt': '00000', 'FAC': '011000'},
+    'multu': {'type': 'R', 'op': '000000', 'shamt': '00000', 'FAC': '011001'},
+    'div':   {'type': 'R', 'op': '000000', 'shamt': '00000', 'FAC': '011010'},
+    'divu':  {'type': 'R', 'op': '000000', 'shamt': '00000', 'FAC': '011011'},
+    'mul':   {'type': 'R', 'op': '011100', 'shamt': '00000', 'FAC': '000010'},
+    # --- I-type (bltz/bgez: REGIMM 000001, the fixed rt picks the branch) ---
+    'addi':  {'type': 'I', 'op': '001001'},
+    'addiu': {'type': 'I', 'op': '001001'},
+    'slti':  {'type': 'I', 'op': '001010'},
+    'sltiu': {'type': 'I', 'op': '001011'},
+    'andi':  {'type': 'I', 'op': '001100'},
+    'ori':   {'type': 'I', 'op': '001101'},
+    'xori':  {'type': 'I', 'op': '001110'},
+    'lui':   {'type': 'I', 'op': '001111'},
+    'lb':    {'type': 'I', 'op': '100000'},
+    'lh':    {'type': 'I', 'op': '100001'},
+    'lw':    {'type': 'I', 'op': '100011'},
+    'lbu':   {'type': 'I', 'op': '100100'},
+    'lhu':   {'type': 'I', 'op': '100101'},
+    'sb':    {'type': 'I', 'op': '101000'},
+    'sh':    {'type': 'I', 'op': '101001'},
+    'sw':    {'type': 'I', 'op': '101011'},
+    'beq':   {'type': 'I', 'op': '000100'},
+    'bne':   {'type': 'I', 'op': '000101'},
+    'blez':  {'type': 'I', 'op': '000110'},
+    'bgtz':  {'type': 'I', 'op': '000111'},
+    'bltz':  {'type': 'I', 'op': '000001', 'rt': '00000'},
+    'bgez':  {'type': 'I', 'op': '000001', 'rt': '00001'},
+    # --- J-type ---
+    'j':     {'type': 'J', 'op': '000010'},
+    'jal':   {'type': 'J', 'op': '000011'},
 }
+
 
 REG_NAMES = ['zero', 'at', 'v0', 'v1', 'a0', 'a1', 'a2', 'a3',
              't0', 't1', 't2', 't3', 't4', 't5', 't6', 't7',
@@ -234,7 +266,7 @@ def first_pass(lines):
 
                 text.append((word, ops, pc, line_number,line))
                 pc += 4
-                if word in ["beq", "bne", "j", "jal", "jr"]:
+                if word in ["beq", "bne", "j", "jal", "jr", "jalr", "bltz", "bgez", "blez", "bgtz"]:
                     text.append(("nop", [], pc, line_number,"nop"))
                     pc += 4
 
@@ -255,7 +287,7 @@ def encode(mn, ops, pc, labels):
     info = isa[mn]
 
     if info['type'] == 'R': #check if the instruction is of type R
-        if mn in ["sll", "srl"]:
+        if mn in ["sll", "srl", "sra"]:
             check_operands(ops, 3, mn)
             rd = check_register(ops[0])
             rt = check_register(ops[1])
@@ -271,6 +303,32 @@ def encode(mn, ops, pc, labels):
             op = info['op']
             FAC = info['FAC']
             return f"{op}{DecBinary(rs,5)}{DecBinary(0,5)}{DecBinary(0,5)}{DecBinary(0,5)}{FAC}"
+        elif mn in ["sllv", "srlv", "srav"]:
+            check_operands(ops, 3, mn)
+            rd = check_register(ops[0])
+            rt = check_register(ops[1])
+            rs = check_register(ops[2])
+            return f"{info['op']}{DecBinary(rs,5)}{DecBinary(rt,5)}{DecBinary(rd,5)}{info['shamt']}{info['FAC']}"
+        elif mn == "jalr":
+            if len(ops) == 1:
+                rd, rs = 31, check_register(ops[0])
+            else:
+                check_operands(ops, 2, mn)
+                rd, rs = check_register(ops[0]), check_register(ops[1])
+            return f"{info['op']}{DecBinary(rs,5)}{DecBinary(0,5)}{DecBinary(rd,5)}{info['shamt']}{info['FAC']}"
+        elif mn in ["mfhi", "mflo"]:
+            check_operands(ops, 1, mn)
+            rd = check_register(ops[0])
+            return f"{info['op']}{DecBinary(0,10)}{DecBinary(rd,5)}{info['shamt']}{info['FAC']}"
+        elif mn in ["mthi", "mtlo"]:
+            check_operands(ops, 1, mn)
+            rs = check_register(ops[0])
+            return f"{info['op']}{DecBinary(rs,5)}{DecBinary(0,10)}{info['shamt']}{info['FAC']}"
+        elif mn in ["mult", "multu", "div", "divu"]:
+            check_operands(ops, 2, mn)
+            rs = check_register(ops[0])
+            rt = check_register(ops[1])
+            return f"{info['op']}{DecBinary(rs,5)}{DecBinary(rt,5)}{DecBinary(0,10)}{info['FAC']}"
         else:
             check_operands(ops, 3, mn)
             rd = check_register(ops[0])
@@ -285,7 +343,7 @@ def encode(mn, ops, pc, labels):
 
     if info['type'] == 'I': #check if the instruction is of type I
 
-        if mn in ['lw', 'sw']:#check if the instruction is of type lw or sw
+        if mn in ['lw', 'sw', 'lb', 'lbu', 'lh', 'lhu', 'sb', 'sh']:  # loads and stores: rt, offset(rs)
 
             check_operands(ops, 2, mn)
             op = info['op']
@@ -302,6 +360,18 @@ def encode(mn, ops, pc, labels):
             rs = check_register(register)
             offset = check_range(check_immediate(offset),-32768,32767,"offset")
             return f"{op}{DecBinary(rs,5)}{DecBinary(rt,5)}{DecBinary(offset,16)}"
+        elif mn in ['blez', 'bgtz']:
+            check_operands(ops, 2, mn)
+            rs = check_register(ops[0])
+            label = check_target(ops[1], labels)
+            offset = check_range((label - (pc + 4)) // 4, -32768, 32767, "branch offset")
+            return f"{info['op']}{DecBinary(rs,5)}{DecBinary(0,5)}{DecBinary(offset,16)}"
+        elif mn in ['bltz', 'bgez']:
+            check_operands(ops, 2, mn)
+            rs = check_register(ops[0])
+            label = check_target(ops[1], labels)
+            offset = check_range((label - (pc + 4)) // 4, -32768, 32767, "branch offset")
+            return f"{info['op']}{DecBinary(rs,5)}{info['rt']}{DecBinary(offset,16)}"
         elif mn in ['beq', 'bne']:#check if the instruction is of type beq or bne
 
             check_operands(ops, 3, mn)
@@ -324,7 +394,7 @@ def encode(mn, ops, pc, labels):
             inm = check_range(
             check_immediate(ops[1]),0,65535,"immediate")
             return f"{op}{DecBinary(0,5)}{DecBinary(rt,5)}{DecBinary(inm,16)}"
-        elif mn in ["addi", "slti","addiu"]:#check if the instruction is of type addi or slti
+        elif mn in ["addi", "slti", "addiu", "sltiu"]:  # signed 16-bit immediate
             check_operands(ops, 3, mn)
             rt = check_register(ops[0])
             rs = check_register(ops[1])
@@ -339,7 +409,7 @@ def encode(mn, ops, pc, labels):
             op = info["op"]
 
             return f"{op}{DecBinary(rs,5)}{DecBinary(rt,5)}{DecBinary(inm,16)}"
-        else:#check if the instruction is of type andi or ori
+        else:  # andi ori xori: unsigned 16-bit immediate
 
             check_operands(ops, 3, mn)
             rt = check_register(ops[0])
