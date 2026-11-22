@@ -1,4 +1,4 @@
-/* Top level for PLT-3 / LIFE-5: Game of Life on the board with the single-cycle CPU
+/* Top level for PLT-3 / LIFE-6: Game of Life on the board with the pipelined CPU (mips_pipeline)
 Runs hw/mem/life_board_b0..b3.hex (sw/programs/life_board.asm):
     KEY1 = run/pause, LEDR0 = running, HEX = generation
     running: KEY0 = load the pattern chosen with SW5-4, SW3-0 = speed (15 fastest)
@@ -6,6 +6,7 @@ Runs hw/mem/life_board_b0..b3.hex (sw/programs/life_board.asm):
         the cursor blinks red, KEY0 = toggle the cell under the cursor
 SW9 up = HEX debug view (PLT-4): SW4-0 = register, SW5 = half (0 = 15:0, 1 = 31:16),
     HEX5-4 = register number in decimal; the program keeps reading the switches
+CPU halt (CPU-14): LEDR9 + LEDR1-0 = cause, HEX = E, cause, address bits 15:0 (SW8 up = PC)
 Both keys go to software, so reset comes from power-up (and the PLL lock)
 */
 module top_life (

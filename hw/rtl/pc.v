@@ -5,7 +5,7 @@ module pc(
 );
 
 always @(posedge clk) begin // updates on every rising clock edge (sequential)
-    if (reset) PC_out <= 32'h0040_0000; // contracts.md: PC reset = 0x00400000
+    if (reset) PC_out <= 32'h0000_0000; // contracts.md: PC reset = 0 (CPU-13)
     else       PC_out <= PC_next;
 end
 

@@ -55,7 +55,7 @@ assign PC_next = JumpReg ? DR1 :
                  Jump ? JumpTarget :
                  BranchTaken ? BranchTarget : PC_plus4;
 // the instruction memory gets the same value as the PC, including the reset value
-assign PC_fetch = reset ? 32'h0040_0000 : PC_next;
+assign PC_fetch = reset ? 32'h0000_0000 : PC_next;
 instruction_memory #(.INIT_FILE(IMEM_INIT)) im(.clk(clk), .Address(PC_fetch), .Instruction(Instruction));
 
 // 2. Decide what to do

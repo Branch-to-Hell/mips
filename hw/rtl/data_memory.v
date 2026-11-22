@@ -2,10 +2,14 @@
 The defaults are the data region (0x1001_0000, 16 KB). life_system also uses it for
 the stack (PLT-13): BASE = 0x7FFF_E000, WORDS = 1024 (4 KB)
 BASE must be aligned to the region size (WORDS * 4), so the low address bits are the word index
+INIT_FILE: the program's .data image (<name>_data.hex from the assembler, one word per line from
+BASE), loaded with $readmemh in ModelSim and as the M9K initial content in Quartus. Words the file
+doesn't cover start at 0
 */
 module data_memory #(
     parameter [31:0] BASE = 32'h1001_0000,
-    parameter WORDS = 4096                  // a power of 2
+    parameter WORDS = 4096,                 // a power of 2
+    parameter INIT_FILE = ""                // "" = all zeros
 )(
     input clk,
     input MemRead,
@@ -19,6 +23,12 @@ localparam IW = $clog2(WORDS);              // word index width
 localparam [31:0] SIZE = WORDS * 4;         // region size in bytes
 
 reg [31:0] mem [0:WORDS-1];
+
+integer i;
+initial begin
+    for (i = 0; i < WORDS; i = i + 1) mem[i] = 32'd0;
+    if (INIT_FILE != "") $readmemh(INIT_FILE, mem);
+end
 
 // Only aligned accesses inside this region are supported
 wire ValidAddress;
