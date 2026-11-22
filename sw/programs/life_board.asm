@@ -21,7 +21,8 @@
 #     the cursor cell blinks between red and its real color (~0.25 s each)
 #     KEY0  = toggle the cell under the cursor (alive <-> dead)
 #   LEDR0   = on while running
-#   LEDR9-1 = live-cell bar (LIFE-4): one LED per 16 live cells, rounded up, at most 9
+#   LEDR9-1 = live-cell bar (LIFE-4): one LED per 32 live cells, rounded up, at most 9
+#             (a random board, ~190 cells, lights ~6; it fills at 257 or more)
 #   HEX     = generation number (0 after loading a pattern)
 # Starts paused with a glider. To draw from scratch: run, load "empty" (SW5-4 = 10),
 # pause, draw with the switches and KEY0, then run.
@@ -268,7 +269,7 @@ paint_cell:
     jr   $ra
 
 # ---- update_leds: count the live cells (v0) and build the bar for LEDR9-1 (gp) ----
-# One LED per 16 live cells, rounded up, at most 9. LEDR0 stays "running".
+# One LED per 32 live cells, rounded up, at most 9. LEDR0 stays "running".
 # The main loop writes LEDR = gp | running. Uses t0-t2.
 update_leds:
     addi $v0, $zero, 0          # v0 = live cells
@@ -281,8 +282,8 @@ ul_count:
     addi $t0, $t0, 1
     addi $t2, $zero, 768
     bne  $t0, $t2, ul_count
-    addi $t0, $v0, 15
-    srl  $t0, $t0, 4            # LEDs lit = ceil(live / 16)
+    addi $t0, $v0, 31
+    srl  $t0, $t0, 5            # LEDs lit = ceil(live / 32)
     slti $t1, $t0, 10
     bne  $t1, $zero, ul_cap_ok
     addi $t0, $zero, 9          # at most 9 LEDs (LEDR9-1)
