@@ -47,10 +47,10 @@ HALT: jumps to itself at 0x00000040  (steps=87028)
   - **CPU-14 halt**: `HALT: cause C (fetch|load|store) pc ... addr ...`, after the older instructions finish.
   - **`+max-cycles`**: `HALT: reached +max-cycles N at PC=...` (`ref_sim.py` counts instructions, so this line differs).
 - `steps` = instructions that finished (nops too, stall bubbles not): the same number `ref_sim.py` prints.
-- HI/LO lines will come with CPU-8.
+- **HI/LO (CPU-8):** `mult multu div divu` print `HI` then `LO`, `mthi`/`mtlo` one line, in the instruction's place (when it reaches WB). A divide finishes 32 cycles later while the pipeline keeps going, so its lines, and every line after them, wait in a queue until the divider is done. Divide by zero prints nothing, like `ref_sim.py`.
 
 ## What is checked (Nov 22)
 
-`compare` passes for every program in `mem/` that ends: the TC-4, TC-5, TC-15 and TC-16 programs, the drills, `test_*` and the C `hello_pixels` (62,332 writes). `test_halt` ends with the same CPU-14 halt line.
+`compare` passes for every program in `mem/` that ends: the TC-4, TC-5, TC-15 and TC-16 programs, the drills, `test_*`, the C programs `hello_pixels` (62,332 writes), `test_libc` (43,191, HI/LO included) and `test_bus`, and the GNU as ISA tests `cpu7_isa` and `cpu8_muldiv` (CPU-7, CPU-8). `test_halt` and `test_bus` end with the same CPU-14 halt line.
 
 Programs that never end (`life_board`, `test_mmio`, `test_mode_b`, `test_timer`) give the same trace as far as both run, except where they read the timer: `ref_sim.py` treats MMIO as RAM, while the hardware timer counts. Switches and keys read 0 (released) in both.

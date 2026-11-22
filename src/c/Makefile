@@ -29,13 +29,9 @@ LDFLAGS := $(ARCH) -nostdlib -nostartfiles -static -T link.ld \
 LIBC    := $(BUILD)/libc.a
 LIBS    := $(LIBC) -lgcc    # our libc, then GCC's helpers (64-bit shifts, soft float)
 
-# --phase1: fail if GCC used an instruction mips_pipeline does not run yet.
-# Drop it (ELF2HEX_FLAGS=) once CPU-7 and CPU-8 are merged.
-ELF2HEX_FLAGS ?= --phase1
-# Programs that need the phase 2 ISA (any use of the libc does: lbu/sb, divu, ...):
-# they run in ref_sim.py now, and on the CPU once CPU-7 and CPU-8 are in.
-PHASE2_PROGRAMS := test_libc
-$(foreach p,$(PHASE2_PROGRAMS),$(eval $(MEM)/$(p).hex: ELF2HEX_FLAGS :=))
+# mips_pipeline runs the whole MIPS I integer set (CPU-7, CPU-8), so no ISA check.
+# ELF2HEX_FLAGS=--phase1 still lists what a phase 1 CPU (mips_cpu) could not run.
+ELF2HEX_FLAGS ?=
 
 PROGRAMS := $(basename $(wildcard *.c))
 LIBC_OBJS := $(patsubst libc/%.c,$(BUILD)/libc/%.o,$(wildcard libc/*.c))

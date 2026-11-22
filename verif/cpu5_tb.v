@@ -16,7 +16,7 @@ localparam EXPECTED_STALLS = 21;
 
 mips_pipeline dut(.clk(clk), .reset(reset), .mem_addr(mem_addr), .mem_wdata(mem_wdata),
     .mem_we(mem_we), .mem_re(mem_re), .mem_rdata(mem_rdata), .mem_fault(1'b0), .dbg_sel(5'd0), .dbg_value());
-data_memory dm(.clk(clk), .MemRead(mem_re), .MemWrite(mem_we), .Address(mem_addr),
+data_memory dm(.clk(clk), .MemRead(mem_re), .MemWrite(mem_we), .ByteEnable(4'b1111), .Address(mem_addr),
     .WriteData(mem_wdata), .ReadData(mem_rdata));
 always #5 clk = ~clk;
 
@@ -29,7 +29,7 @@ task put(input integer index, input [31:0] word); dut.if_id.im.write_word(index,
 
 initial begin
     #1;
-    for (i = 0; i < 4096; i = i + 1) begin put(i, BAD); dm.mem[i] = 0; end
+    for (i = 0; i < 4096; i = i + 1) begin put(i, BAD); dm.write_word(i, 0); end
     for (i = 0; i < 32; i = i + 1) begin dut.rf.registers[i] = 0; expected_reg[i] = 0; end
     dut.rf.registers[17] = 32'h1001_0000;     // $s1 = data base
     expected_reg[17] = 32'h1001_0000;
@@ -90,8 +90,8 @@ initial begin
             $display("FAIL  $%0d = %h, expected %h", i, dut.rf.registers[i], expected_reg[i]);
             errors = errors + 1;
         end
-    if (dm.mem[0] !== 40 || dm.mem[1] !== 40) begin
-        $display("FAIL  memory: mem[0] = %0d, mem[1] = %0d, expected 40 40", dm.mem[0], dm.mem[1]);
+    if (dm.word(0) !== 40 || dm.word(1) !== 40) begin
+        $display("FAIL  memory: mem[0] = %0d, mem[1] = %0d, expected 40 40", dm.word(0), dm.word(1));
         errors = errors + 1;
     end
     if (stalls !== EXPECTED_STALLS) begin

@@ -3,6 +3,7 @@
     <name>.hex          text region, one 32-bit word per line from 0x00000000
     <name>_data.hex     data region, one word per line from 0x10010000 (.rodata + .data)
     <name>_bytes.hex, <name>_b0..b3.hex   instruction images (CPU-12), made by hex2banks.py
+    <name>_data_b0..b3.hex                the data image in 4 byte lanes, what data_memory loads (CPU-7)
 
 Every word is big-endian (the ELF must be -EB). .bss is not in the image: crt0.S zeroes it.
 The files go to mem/ (or -o DIR), so the testbenches, ref_sim.py and Quartus use them like
@@ -122,6 +123,7 @@ def convert(elf_path, out_dir, phase1):
     print(f"{elf_path}: {len(text_words)} text words, {len(data_words)} data words -> "
           f"{out_dir}/{name}.hex + {name}_data.hex")
     hex2banks.convert(hex_path)
+    hex2banks.convert(out_dir / f"{name}_data.hex", bytes_image=False)  # data_memory's 4 lanes
 
 
 def main():

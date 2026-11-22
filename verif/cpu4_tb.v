@@ -14,7 +14,7 @@ reg stores[0:127], loads[0:127];
 reg [31:0] addresses[0:127], store_values[0:127];
 mips_pipeline dut(.clk(clk),.reset(reset),.mem_addr(mem_addr),.mem_wdata(mem_wdata),
     .mem_we(mem_we),.mem_re(mem_re),.mem_rdata(mem_rdata), .mem_fault(1'b0));
-data_memory dm(.clk(clk),.MemRead(mem_re),.MemWrite(mem_we),.Address(mem_addr),
+data_memory dm(.clk(clk),.MemRead(mem_re),.MemWrite(mem_we), .ByteEnable(4'b1111),.Address(mem_addr),
     .WriteData(mem_wdata),.ReadData(mem_rdata));
 always #5 clk=~clk;
 
@@ -44,14 +44,14 @@ endtask
 
 initial begin
     #1;
-    for(i=0;i<4096;i=i+1) begin dut.if_id.im.write_word(i, 0); dm.mem[i]=0; end
+    for(i=0;i<4096;i=i+1) begin dut.if_id.im.write_word(i, 0); dm.write_word(i, 0); end
     for(i=0;i<32;i=i+1) dut.rf.registers[i]=0;
     dut.rf.registers[16]=32'h10010000;
     dut.rf.registers[17]=10;
     dut.rf.registers[18]=3;
     dut.rf.registers[19]=32'hffffffff;
-    dm.mem[0]=32'h12345678;
-    dm.mem[1]=32'h89abcdef;
+    dm.write_word(0, 32'h12345678);
+    dm.write_word(1, 32'h89abcdef);
     // Read only preinitialized source registers; different live controls overlap.
     emit({6'h00,5'd17,5'd18,5'd8,5'd0,6'h20},8,13); // add
     emit({6'h08,5'd18,5'd9,16'hfffe},9,1); // addi negative
@@ -112,13 +112,13 @@ initial begin
         if(index>=0 && index<n && targets[index]!=0 && dut.rf.registers[targets[index]] !== values[index])
             $fatal(1,"Register write did not commit at the end of WB (instruction %0d)",index);
     end
-    if(dm.mem[2] !== 10 || dm.mem[3] !== 3 || dm.mem[4] !== 42 || dut.rf.registers[0] !== 0)
+    if(dm.word(2) !== 10 || dm.word(3) !== 3 || dm.word(4) !== 42 || dut.rf.registers[0] !== 0)
         $fatal(1,"Final memory/zero-register mismatch");
     // Reset during overlap of an uncommitted WB write and a pending MEM store.
     reset=1;
     @(posedge clk); #1;
     dut.rf.registers[8]=123;
-    dm.mem[0]=32'hfeedface;
+    dm.write_word(0, 32'hfeedface);
     dut.if_id.im.write_word(0, {6'h08,5'd0,5'd8,16'd55});
     dut.if_id.im.write_word(1, {6'h2b,5'd16,5'd17,16'd0});
     for(i=2;i<4096;i=i+1) dut.if_id.im.write_word(i, 0);
@@ -128,7 +128,7 @@ initial begin
     reset=1; #1;
     if(mem_we !== 0 || mem_re !== 0) $fatal(1,"Reset must block memory immediately");
     @(negedge clk); #1;
-    if(dut.rf.registers[8] !== 123 || dm.mem[0] !== 32'hfeedface)
+    if(dut.rf.registers[8] !== 123 || dm.word(0) !== 32'hfeedface)
         $fatal(1,"Reset allowed a register/memory side effect");
     @(posedge clk); #1;
     if(dut.rf.registers[8] !== 123)
@@ -137,7 +137,7 @@ initial begin
         $fatal(1,"Reset did not clear pipeline and restart fetch");
     reset=0;
     repeat(6) begin @(negedge clk); #1; end
-    if(dut.rf.registers[8] !== 55 || dm.mem[0] !== 10)
+    if(dut.rf.registers[8] !== 55 || dm.word(0) !== 10)
         $fatal(1,"Restart after reset failed");
     $display("PASS",n);
     $finish;

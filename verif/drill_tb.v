@@ -24,7 +24,7 @@ wire [3:0] VGA_R, VGA_G, VGA_B;
 wire VGA_HS, VGA_VS;
 
 life_system #(.IMEM_INIT({"../mem/", PROGRAM}),
-              .DMEM_INIT(WITH_DATA ? {"../mem/", PROGRAM, "_data.hex"} : ""),
+              .DMEM_INIT(WITH_DATA ? {"../mem/", PROGRAM, "_data"} : ""),
               .DEBOUNCE_CYCLES(50)) sys (
     .clk(clk), .reset(reset), .SW(SW), .KEY(KEY), .LEDR(LEDR),
     .HEX0(HEX0), .HEX1(HEX1), .HEX2(HEX2), .HEX3(HEX3), .HEX4(HEX4), .HEX5(HEX5),
@@ -54,7 +54,7 @@ initial begin
     $fdisplay(f, "end %0s cycles %0d pc %h", sys.halted ? "halt" : (at_end ? "selfjump" : "timeout"), n, id_pc);
     $fdisplay(f, "halt %0d %h %h", sys.halt_cause, sys.halt_pc, sys.halt_addr);
     for (i = 0; i < 32; i = i + 1) $fdisplay(f, "reg %0d %h", i, sys.cpu.rf.registers[i]);
-    for (i = 0; i < DATA_WORDS; i = i + 1) $fdisplay(f, "mem %h %h", 32'h1001_0000 + 4 * i, sys.dm.mem[i]);
+    for (i = 0; i < DATA_WORDS; i = i + 1) $fdisplay(f, "mem %h %h", 32'h1001_0000 + 4 * i, sys.dm.word(i));
     $fclose(f);
     $display("DRILL %0s: %0s after %0d cycles", PROGRAM, sys.halted ? "halt" : (at_end ? "selfjump" : "timeout"), n);
     $finish;

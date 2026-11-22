@@ -2,7 +2,7 @@
 Same hardware as top_life (life_system with the pipelined CPU), but the program is picked
 in quartus/program.qsf, so loading a new program never touches the Game of Life build:
     set_parameter -name PROGRAM "count_value_in1"   -> mem/count_value_in1_b0..b3.hex
-    set_parameter -name WITH_DATA 1                 -> also mem/count_value_in1_data.hex
+    set_parameter -name WITH_DATA 1                 -> also mem/count_value_in1_data_b0..b3.hex
                                                        (0 if the program has no .data)
 Steps: python src/assembler/assembler.py src/programs/<name>.asm, edit the two lines above,
 compile the "program" revision, program the board.
@@ -33,7 +33,7 @@ always @(posedge clk25)
 wire reset = !por[4];
 
 life_system #(.IMEM_INIT({"../mem/", PROGRAM}),                     // paths from quartus
-              .DMEM_INIT(WITH_DATA ? {"../mem/", PROGRAM, "_data.hex"} : "")) sys (
+              .DMEM_INIT(WITH_DATA ? {"../mem/", PROGRAM, "_data"} : "")) sys (
     .clk(clk25), .reset(reset),
     .SW(SW), .KEY(KEY), .LEDR(LEDR),
     .HEX0(HEX0), .HEX1(HEX1), .HEX2(HEX2), .HEX3(HEX3), .HEX4(HEX4), .HEX5(HEX5),

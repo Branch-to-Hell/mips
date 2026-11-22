@@ -12,7 +12,7 @@ SIM     := $(BUILD)/mips_sim
 PYTHON  ?= python3
 
 # life_system with mode B and what it instantiates (no PLL or board top-levels)
-RTL := $(addprefix $(ROOT)/rtl/, life_system.v mips_pipeline.v hazard_unit.v if_id_register.v \
+RTL := $(addprefix $(ROOT)/rtl/, life_system.v mips_pipeline.v mult_div.v hazard_unit.v if_id_register.v \
        pipeline_register.v instruction_memory.v control_unit.v alu_control.v register_file.v alu.v \
        data_memory.v debounce.v hex7seg.v hex_debug.v mmio.v vga_sync.v framebuffer_a.v \
        video_mode_a.v framebuffer_b.v palette.v video_mode_b.v)

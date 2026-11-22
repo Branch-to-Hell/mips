@@ -95,7 +95,7 @@ initial begin
 
     // 2. No writes from the failing sw or younger instructions
     repeat (10) @(posedge clk);
-    if (sys.stack.mem[0] === 32'h444) fail("2. the failing sw wrote the stack");
+    if (sys.stack.word(0) === 32'h444) fail("2. the failing sw wrote the stack");
     if (sys.cpu.rf.registers[12] !== 32'd0) fail("2. an instruction after the sw ran ($t4)");
     else $display("ok    nothing written after the halt");
 

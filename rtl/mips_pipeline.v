@@ -251,8 +251,11 @@ wire misaligned = (mem_size_ctl == SIZE_BYTE) ? 1'b0 :
 wire mem_access = mem_valid && (mem_read_ctl || mem_write_ctl);
 assign access_fault = mem_access && (mem_fault || misaligned);
 assign mem_addr = mem_value;
-// CPU-7 byte lanes (big-endian): offset 0 is bits 31..24.
-assign mem_be = (mem_size_ctl == SIZE_BYTE) ? (4'b1000 >> byte_off) :
+// CPU-7 byte lanes (big-endian): offset 0 is bits 31..24. 1111 when MEM has no load/store
+// (a bubble's payload is all zeros = byte size), so the top level's decoder, which also
+// looks at mem_be (framebuffer A takes whole words only), gives a clean answer.
+assign mem_be = !mem_access ? 4'b1111 :
+                (mem_size_ctl == SIZE_BYTE) ? (4'b1000 >> byte_off) :
                 (mem_size_ctl == SIZE_HALF) ? (byte_off[1] ? 4'b0011 : 4'b1100) : 4'b1111;
 assign mem_wdata = (mem_size_ctl == SIZE_BYTE) ? {4{mem_store_data[7:0]}} :
                    (mem_size_ctl == SIZE_HALF) ? {2{mem_store_data[15:0]}} : mem_store_data;
