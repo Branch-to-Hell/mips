@@ -193,6 +193,7 @@ HALT: jumps to itself at 0x00000034  (steps=15)
 - Delay slot as in the pipeline: `jal`/`jalr` write PC + 8 and the instruction after a jump always runs.
 - Invalid fetch, load or store: the same halt as the CPU (cause 1/2/3, see "Halt on invalid access") with the memory map above, printed as `HALT: cause 2 (load) pc 0x... addr 0x...`. The failing instruction writes nothing.
 - The last line always starts with `HALT:` and says why the run ended. Drop it before comparing with the CPU trace.
+- **Verilator harness (TC-7):** `verif/verilator/` runs the image on `life_system` and prints this format, with the same `HALT:` line for a self-jump or a CPU-14 halt (`steps` counts the same). `make -C verif/verilator compare PROG=<name>` diffs it against `ref_sim.py`. MMIO is real there (the timer counts), so programs that read the timer differ.
 
 ## Tool settings
 - **MARS:** *Settings → Delayed branching* **off**; *Memory Configuration → Default*; Bitmap Display: unit 4×4, display 512 wide, base address `0x10040000 (heap)`.
