@@ -1,4 +1,4 @@
-# Run from hw/sim in ModelSim: do cpu2.do
+# Run from verif in ModelSim: do cpu2.do
 onerror {quit -code 1 -f}
 catch {quit -sim}
 vlib work

@@ -1,7 +1,7 @@
 # test_rtype.asm - R-type test for CPU-1 (single-cycle).
-# Initial registers come from hw/sim/rtype_regs.bin: $t1 = 5, $t2 = 3
+# Initial registers come from verif/rtype_regs.bin: $t1 = 5, $t2 = 3
 # (no addi yet, so the testbench preloads them).
-# Machine code: hw/mem/test_rtype.hex. Expected results are checked in hw/sim/mips_cpu_tb.v.
+# Machine code: mem/test_rtype.hex. Expected results are checked in verif/mips_cpu_tb.v.
 .text
     add  $t0, $t1, $t2     # $t0 = 8
     sub  $t3, $t1, $t2     # $t3 = 2

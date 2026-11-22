@@ -5,7 +5,7 @@
 // after its address is computed. Also checks that there are no false stalls ($zero, the rt
 // destination of I-type instructions, independent instructions).
 // Checks the final registers and memory, and the exact number of stall cycles (21).
-// Run from hw/sim in ModelSim: do cpu5.do
+// Run from verif in ModelSim: do cpu5.do
 module cpu5_tb;
 reg clk = 0, reset = 1;
 wire [31:0] mem_addr, mem_wdata, mem_rdata;

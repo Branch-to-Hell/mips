@@ -1,4 +1,4 @@
-# Run from hw/sim in ModelSim: do video_mode_b.do
+# Run from verif in ModelSim: do video_mode_b.do
 # Simulates one full frame (about 17 ms), checks every pixel and saves frame_b.ppm
 onerror {quit -code 1 -f}
 catch {quit -sim}

@@ -1,6 +1,6 @@
 `timescale 1ns/1ns
-// LIFE-6 / CPU-14 test: life_system address decoder and visible halt. Run from hw/sim: do halt.do
-/* Runs test_halt.hex (sw/programs/test_halt.asm) on life_system with mips_pipeline. Checks:
+// LIFE-6 / CPU-14 test: life_system address decoder and visible halt. Run from verif: do halt.do
+/* Runs test_halt.hex (src/programs/test_halt.asm) on life_system with mips_pipeline. Checks:
   1. the first and last word of every region (data, mode A, stack, MMIO) don't halt: the
      program reaches LEDR = 0x155, and the CPU halts at the sw to 0x7FFFF000
      (cause 3, halt_addr 0x7FFFF000, halt_pc = that sw)

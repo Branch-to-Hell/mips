@@ -1,4 +1,4 @@
-# Run from hw/sim in ModelSim: do cpu6.do
+# Run from verif in ModelSim: do cpu6.do
 # CPU-6: branches/jumps resolved in ID with one delay slot (mips_pipeline).
 onerror {quit -code 1 -f}
 catch {quit -sim}

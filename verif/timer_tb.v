@@ -1,5 +1,5 @@
 `timescale 1ns/1ns
-// PLT-5 test: CPU + data memory + MMIO running test_timer.hex. Run from hw/sim: do timer.do
+// PLT-5 test: CPU + data memory + MMIO running test_timer.hex. Run from verif: do timer.do
 /* 1 ms = 100 cycles here (CYCLES_PER_MS), so a simulated "second" is short.
 Checks:
   1. the timer counts exactly 1 every CYCLES_PER_MS cycles from reset,

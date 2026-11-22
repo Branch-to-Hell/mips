@@ -1,4 +1,4 @@
-# Run from hw/sim in ModelSim: do life.do   (simulates ~200 ms of the board, takes a few minutes)
+# Run from verif in ModelSim: do life.do   (simulates ~200 ms of the board, takes a few minutes)
 onerror {quit -code 1 -f}
 catch {quit -sim}
 vlib work

@@ -6,12 +6,12 @@ The professor may bring a MARS program we have never seen and ask us to run it o
 
 **0. Before the lab** (once): Quartus project open on revision `program`, MARS at `~/Downloads/Mars4_5.jar` (or set `MARS_JAR`), ModelSim on PATH.
 
-**1. Save the program** as `sw/programs/drill/<name>.asm` (any name without spaces).
+**1. Save the program** as `src/programs/drill/<name>.asm` (any name without spaces).
 
 **2. Run the drill** from the repo root:
 
 ```
-python sw/tools/drill.py sw/programs/drill/<name>.asm
+python src/tools/drill.py src/programs/drill/<name>.asm
 ```
 
 It takes a few seconds and does everything:
@@ -19,18 +19,18 @@ It takes a few seconds and does everything:
 | Step | What it does |
 |---|---|
 | 1 | `mars_compat.py` rewrites what our assembler/CPU don't have (see below) into `build/drill/<name>.asm`, and lists every change |
-| 2 | Our assembler writes `hw/mem/<name>_b0..b3.hex` and `<name>_data.hex` |
+| 2 | Our assembler writes `mem/<name>_b0..b3.hex` and `<name>_data.hex` |
 | 3 | MARS runs the **original** program: the expected registers and data |
 | 4 | ModelSim runs our image on `life_system` with `mips_pipeline` (the board hardware) until the program's final self-jump |
 | 5 | Compares every register and the first 64 data words, and prints `PASS` or `FAIL` |
 
-It ends with the two lines for `hw/quartus/program.qsf` and the registers to check on the board.
+It ends with the two lines for `quartus/program.qsf` and the registers to check on the board.
 
-**3. Board:** paste the two `set_parameter` lines into `hw/quartus/program.qsf`, compile the `program` revision (about 3 minutes), program the board.
+**3. Board:** paste the two `set_parameter` lines into `quartus/program.qsf`, compile the `program` revision (about 3 minutes), program the board.
 
 **4. Show the result:** SW9 up, SW4-0 = the register number (SW5 up = bits 31..16). The drill printed the expected value of each register. If something went wrong, HEX5 shows `E` (see "If something fails").
 
-Practice programs, all PASS: `sw/programs/drill/drill_stats.asm` (sum, max, negatives), `drill_sort.asm` (bubble sort), `drill_pseudo.asm` (one of each rewritten pseudo-instruction). Each drill took about 2 seconds before the board step.
+Practice programs, all PASS: `src/programs/drill/drill_stats.asm` (sum, max, negatives), `drill_sort.asm` (bubble sort), `drill_pseudo.asm` (one of each rewritten pseudo-instruction). Each drill took about 2 seconds before the board step.
 
 ## What `mars_compat.py` rewrites
 

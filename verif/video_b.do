@@ -1,4 +1,4 @@
-# Run from hw/sim in ModelSim: do video_b.do   (CPU fills the screen and cycles the palette)
+# Run from verif in ModelSim: do video_b.do   (CPU fills the screen and cycles the palette)
 onerror {quit -code 1 -f}
 catch {quit -sim}
 vlib work

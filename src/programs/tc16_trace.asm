@@ -1,5 +1,5 @@
 # tc16_trace.asm - TC-16: one traced instruction per format on mips_pipeline
-# Traced in hw/sim/trace_tb.v (do trace.do), which writes docs/tc16/trace_R.txt, trace_I.txt, trace_J.txt.
+# Traced in verif/trace_tb.v (do trace.do), which writes verif/traces/trace_R.txt, trace_I.txt, trace_J.txt.
 #   R: add $t2, $t0, $t1    5 + 7 = 12 (professor's funct 0x21)
 #   I: lw  $t3, 4($s1)      reads 0xCAFE1234 from 0x10010004 (sign-extended offset, MemtoReg)
 #   J: j   j_target         skips addi $t4, $zero, 1, so $t4 stays 0 (visible effect)

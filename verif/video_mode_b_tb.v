@@ -1,5 +1,5 @@
 `timescale 1ns/1ps
-// PLT-6 test: video_mode_b alone. Run from hw/sim: do video_mode_b.do
+// PLT-6 test: video_mode_b alone. Run from verif: do video_mode_b.do
 /* Checks:
   1. CPU port, pixels: a word write puts its 4 pixels big-endian (bits 31..24 = pixel 4n),
      reads come back, and byte enables only change their own pixel

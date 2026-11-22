@@ -1,5 +1,5 @@
 TC-16 trace, I lw: PC 00000020, word 8e2b0004
-Program sw/programs/tc16_trace.asm on mips_pipeline (hw/sim/trace_tb.v, do trace.do).
+Program src/programs/tc16_trace.asm on mips_pipeline (verif/trace_tb.v, do trace.do).
 Each block is one clock cycle; values are the state during the cycle (sampled at the edge that ends it).
 
 Before: $s1 = 10010000  $t3 = ffffffff  mem[0x10010004] = cafe1234

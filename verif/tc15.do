@@ -1,6 +1,6 @@
-# Run from hw/sim in ModelSim: do tc15.do
-# TC-15: the graded algorithm (sw/programs/count_value_in1..3.asm) on life_system with mips_pipeline.
-# Assemble first, from the repo root: python sw/assembler/assembler.py sw/programs/count_value_in<k>.asm
+# Run from verif in ModelSim: do tc15.do
+# TC-15: the graded algorithm (src/programs/count_value_in1..3.asm) on life_system with mips_pipeline.
+# Assemble first, from the repo root: python src/assembler/assembler.py src/programs/count_value_in<k>.asm
 onerror {quit -code 1 -f}
 catch {quit -sim}
 vlib work

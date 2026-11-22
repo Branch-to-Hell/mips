@@ -1,8 +1,8 @@
-"""TC-16: run the assembler on every sw/programs/errors/*.asm and compare its error.
+"""TC-16: run the assembler on every src/programs/errors/*.asm and compare its error.
 
 Each example starts with "# Expected: <message>". The assembler must exit with code 1
 and print exactly that message. From the repo root:
-    python sw/tools/check_asm_errors.py
+    python src/tools/check_asm_errors.py
 """
 import glob
 import os
@@ -10,11 +10,11 @@ import subprocess
 import sys
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../.."))
-ASSEMBLER = os.path.join(ROOT, "sw", "assembler", "assembler.py")
-OUT = os.path.join(ROOT, "build", "asm_errors")   # never hw/mem: nothing should be written anyway
+ASSEMBLER = os.path.join(ROOT, "src", "assembler", "assembler.py")
+OUT = os.path.join(ROOT, "build", "asm_errors")   # never mem: nothing should be written anyway
 
 failures = 0
-files = sorted(glob.glob(os.path.join(ROOT, "sw", "programs", "errors", "*.asm")))
+files = sorted(glob.glob(os.path.join(ROOT, "src", "programs", "errors", "*.asm")))
 for path in files:
     with open(path) as f:
         first = f.readline().strip()

@@ -9,9 +9,9 @@
 # Usage (from a terminal; system-console is in <quartus>/sopc_builder/bin):
 #     system-console -cli --script=wad_load.tcl <file> [offset] [verify|noverify]
 #   offset = byte offset inside the SDRAM, multiple of 4, decimal or 0x... (default 0x03000000)
-#   e.g.  system-console -cli --script=sw/tools/wad_load.tcl doom1.wad 0x03000000
+#   e.g.  system-console -cli --script=src/tools/wad_load.tcl doom1.wad 0x03000000
 # Or inside the System Console GUI/CLI:
-#     source sw/tools/wad_load.tcl
+#     source src/tools/wad_load.tcl
 #     wad_load doom1.wad 0x03000000
 #     wad_verify doom1.wad 0x03000000        ;# only read back and compare
 #

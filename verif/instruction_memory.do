@@ -1,4 +1,4 @@
-# Run from hw/sim in ModelSim: do instruction_memory.do   (CPU-12)
+# Run from verif in ModelSim: do instruction_memory.do   (CPU-12)
 onerror {quit -code 1 -f}
 catch {quit -sim}
 vlib work

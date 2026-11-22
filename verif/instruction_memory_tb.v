@@ -1,5 +1,5 @@
 `timescale 1ns/1ps
-// CPU-12 test: byte-per-address, big-endian instruction memory. Run from hw/sim: do instruction_memory.do
+// CPU-12 test: byte-per-address, big-endian instruction memory. Run from verif: do instruction_memory.do
 /* Loads life_board through the 4 bank files and checks every instruction against
 the two other images of the same program:
   - life_board.hex        one 32-bit word per line (assembler output)

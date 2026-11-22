@@ -8,7 +8,7 @@
 // For each: halted/halt_cause/halt_pc/halt_addr, the failing and younger instructions
 // write nothing, older ones finish, the bus never touches a bad address, the PC and
 // every register stay frozen while halted, and reset clears the halt.
-// Run from hw/sim in ModelSim: do cpu14.do
+// Run from verif in ModelSim: do cpu14.do
 module cpu14_tb;
 reg clk = 0, reset = 1;
 wire [31:0] mem_addr, mem_wdata, mem_rdata;

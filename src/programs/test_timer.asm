@@ -1,7 +1,7 @@
 # test_timer.asm - Timer MMIO test for PLT-5.
-# Machine code: hw/mem/test_timer.hex, from sw/assembler/assembler.py:
-#   python sw/assembler/assembler.py sw/programs/test_timer.asm -o hw/mem
-# Checked in hw/sim/timer_tb.v.
+# Machine code: mem/test_timer.hex, from src/assembler/assembler.py:
+#   python src/assembler/assembler.py src/programs/test_timer.asm -o mem
+# Checked in verif/timer_tb.v.
 #
 # Expected on the board:
 #   - HEX = milliseconds since reset, in hexadecimal (0x3E8 = 1 second)

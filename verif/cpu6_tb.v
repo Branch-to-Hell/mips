@@ -5,7 +5,7 @@
 // write, jal links PC + 8, jr follows any register.
 // No hazard unit yet (CPU-5): every operand is preset or written >= 3 instructions
 // before it is read.
-// Run from hw/sim in ModelSim: do cpu6.do
+// Run from verif in ModelSim: do cpu6.do
 module cpu6_tb;
 reg clk = 0, reset = 1;
 wire [31:0] mem_addr, mem_wdata, mem_rdata;

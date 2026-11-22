@@ -1,9 +1,9 @@
 `timescale 1ns/1ps
-// TC-16: one trace per format (R, I, J) on mips_pipeline. Run from hw/sim: do trace.do
-/* Runs sw/programs/tc16_trace.asm (data from its _data.hex) and follows three instructions
+// TC-16: one trace per format (R, I, J) on mips_pipeline. Run from verif: do trace.do
+/* Runs src/programs/tc16_trace.asm (data from its _data.hex) and follows three instructions
 through IF, ID, EX, MEM and WB, one line block per cycle:
     R: add $t2, $t0, $t1     I: lw $t3, 4($s1)     J: j j_target
-For each one it writes docs/tc16/trace_<R|I|J>.txt with:
+For each one it writes verif/traces/trace_<R|I|J>.txt with:
   - state before (registers and memory it uses) and after (once its write is done)
   - IF: PC and the 4 bytes mem[PC]..mem[PC+3] (big-endian banks) joined into the word
   - ID: fields, immediate, control signals, ALU control, operands read, stall, redirect
@@ -71,7 +71,7 @@ task header(input integer t);
     begin
         w = dut.if_id.im.read_word(pc[t][13:2]);
         $fdisplay(f[t], "TC-16 trace, %0s: PC %h, word %h", name[t], pc[t], w);
-        $fdisplay(f[t], "Program sw/programs/tc16_trace.asm on mips_pipeline (hw/sim/trace_tb.v, do trace.do).");
+        $fdisplay(f[t], "Program src/programs/tc16_trace.asm on mips_pipeline (verif/trace_tb.v, do trace.do).");
         $fdisplay(f[t], "Each block is one clock cycle; values are the state during the cycle (sampled at the edge that ends it).");
         $fdisplay(f[t], "");
     end
@@ -170,11 +170,11 @@ initial begin
     pc[2] = pc[1] + 4;                                        // j right after the lw
     if (dut.if_id.im.read_word(pc[2][13:2]) >> 26 !== 6'h02) $fatal(1, "no j after the lw");
 
-    f[0] = $fopen("../../docs/tc16/trace_R.txt", "w");
-    f[1] = $fopen("../../docs/tc16/trace_I.txt", "w");
-    f[2] = $fopen("../../docs/tc16/trace_J.txt", "w");
+    f[0] = $fopen("traces/trace_R.txt", "w");
+    f[1] = $fopen("traces/trace_I.txt", "w");
+    f[2] = $fopen("traces/trace_J.txt", "w");
     for (i = 0; i < 3; i = i + 1) begin
-        if (f[i] == 0) $fatal(1, "cannot write docs/tc16/ (create the folder)");
+        if (f[i] == 0) $fatal(1, "cannot write verif/traces/ (run from verif/)");
         header(i);
     end
 
@@ -196,7 +196,7 @@ initial begin
     if (dut.rf.registers[12] !== 32'd0) begin $display("FAIL  $t4 = %h, the j did not skip", dut.rf.registers[12]); errors = errors + 1; end
 
     if (errors) $fatal(1, "TC-16 trace: %0d error(s)", errors);
-    $display("PASS: TC-16 traces R (PC %h), I (PC %h), J (PC %h) written to docs/tc16/", pc[0], pc[1], pc[2]);
+    $display("PASS: TC-16 traces R (PC %h), I (PC %h), J (PC %h) written to verif/traces/", pc[0], pc[1], pc[2]);
     $finish;
 end
 endmodule

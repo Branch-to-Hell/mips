@@ -1,5 +1,5 @@
 `timescale 1ns/1ns
-// Self-checking R-type test for CPU-1. Run from hw/sim/: do mips_cpu.do
+// Self-checking R-type test for CPU-1. Run from verif/: do mips_cpu.do
 module mips_cpu_tb();
 
 reg clk, reset;

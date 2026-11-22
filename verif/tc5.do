@@ -1,7 +1,7 @@
-# Run from hw/sim in ModelSim: do tc5.do
-# TC-5: hazard tests (sw/programs/tc5_*.asm) on mips_pipeline with pipeline_program_tb.
+# Run from verif in ModelSim: do tc5.do
+# TC-5: hazard tests (src/programs/tc5_*.asm) on mips_pipeline with pipeline_program_tb.
 # Each program must end with LEDR = 0x3FF and HEX = 0x00600D; on a failure HEX = 0xBAD0nn (nn = test).
-# Assemble first, from the repo root: python sw/assembler/assembler.py sw/programs/<name>.asm
+# Assemble first, from the repo root: python src/assembler/assembler.py src/programs/<name>.asm
 onerror {quit -code 1 -f}
 catch {quit -sim}
 vlib work

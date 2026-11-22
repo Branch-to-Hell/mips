@@ -1,5 +1,5 @@
 /* Top level for PLT-2: CPU + data memory + MMIO on the board
-Runs hw/mem/test_mmio_b0..b3.hex: LEDR mirrors SW, HEX counts KEY0 presses
+Runs mem/test_mmio_b0..b3.hex: LEDR mirrors SW, HEX counts KEY0 presses
 Both keys go to software, so reset comes from power-up (and the PLL lock)
 */
 module top_mmio_test (
@@ -24,7 +24,7 @@ wire reset = !por[4];
 wire [31:0] mem_addr, mem_wdata, mem_rdata, dm_rdata, mmio_rdata;
 wire mem_we, mem_re;
 
-mips_cpu #(.IMEM_INIT("../mem/test_mmio")) cpu ( // path from hw/quartus
+mips_cpu #(.IMEM_INIT("../mem/test_mmio")) cpu ( // path from quartus
     .clk(clk25), .reset(reset),
     .mem_addr(mem_addr), .mem_wdata(mem_wdata),
     .mem_we(mem_we), .mem_re(mem_re), .mem_rdata(mem_rdata)

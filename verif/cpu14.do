@@ -1,4 +1,4 @@
-# Run from hw/sim in ModelSim: do cpu14.do
+# Run from verif in ModelSim: do cpu14.do
 # CPU-14: visible halt on invalid or misaligned fetch, lw and sw (mips_pipeline).
 onerror {quit -code 1 -f}
 catch {quit -sim}

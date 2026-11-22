@@ -1,5 +1,5 @@
 `timescale 1ns/1ns
-// PLT-13 test: life_system running test_stack.hex. Run from hw/sim: do stack.do
+// PLT-13 test: life_system running test_stack.hex. Run from verif: do stack.do
 /* test_stack.asm checks the stack from the program (push/pop, nested jal, recursion,
 region edges, no aliasing with data) and shows PASS (LEDR = 0x3FF, HEX = 0x00600D) or
 FAIL (HEX = 0xBAD0nn). This testbench checks:

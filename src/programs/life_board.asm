@@ -6,8 +6,8 @@
 #   - Phase 1 instructions only
 # The main loop reads the keys on every pass (~20 cycles) and counts passes to
 # pace the generations and the cursor blink, so a quick click is never missed.
-# Machine code: hw/mem/life_board.hex, runs on top_life (PLT-3):
-#   python sw/assembler/assembler.py sw/programs/life_board.asm -o hw/mem
+# Machine code: mem/life_board.hex, runs on top_life (PLT-3):
+#   python src/assembler/assembler.py src/programs/life_board.asm -o mem
 #
 # Controls (KEY = 1 when pressed; the program reacts on the press edge):
 #   KEY1    = run/pause (running starts with a generation right away)
@@ -129,7 +129,7 @@ run:
     bne  $v1, $zero, main_loop
     jal  generation
     jal  draw
-    addi $k0, $k0, 1            # generation done (hw/sim/life_tb.v looks for this instruction)
+    addi $k0, $k0, 1            # generation done (verif/life_tb.v looks for this instruction)
     jal  update_leds            # live-cell bar for the new generation
 wait:
     addi $t0, $zero, 16

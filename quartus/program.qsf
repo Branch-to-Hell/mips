@@ -1,5 +1,5 @@
 # TC-15 / TC-12: any program from our assembler on the board (top_program).
-# Pick the program with the two set_parameter lines (see hw/rtl/top_program.v).
+# Pick the program with the two set_parameter lines (see rtl/top_program.v).
 
 set_global_assignment -name FAMILY "MAX 10"
 set_global_assignment -name DEVICE 10M50DAF484C7G

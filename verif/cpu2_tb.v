@@ -1,5 +1,5 @@
 `timescale 1ns/1ps
-// CPU-2 integration test. Run from hw/sim: do cpu2.do
+// CPU-2 integration test. Run from verif: do cpu2.do
 /* The whole program is loaded into instruction memory before reset,
 because the memory reads on the clock (one instruction ahead).
 After each posedge, the register written by that instruction is checked

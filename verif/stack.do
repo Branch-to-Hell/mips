@@ -1,4 +1,4 @@
-# Run from hw/sim in ModelSim: do stack.do
+# Run from verif in ModelSim: do stack.do
 onerror {quit -code 1 -f}
 catch {quit -sim}
 vlib work

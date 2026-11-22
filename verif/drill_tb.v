@@ -1,6 +1,6 @@
 `timescale 1ns/1ns
 // TC-12: run any assembled program on life_system (the board hardware) and dump its final state.
-// Driven by sw/tools/drill.py; by hand, from hw/sim:
+// Driven by src/tools/drill.py; by hand, from verif:
 //   vsim -c -GPROGRAM="<name>" -GWITH_DATA=1 work.drill_tb +out=drill_<name>.txt -do "run -all; quit -f"
 /* Runs until the program reaches a self-jump (j to itself: the end of every drill program),
 the CPU halts (CPU-14), or MAX_CYCLES pass. Then writes to the +out file:

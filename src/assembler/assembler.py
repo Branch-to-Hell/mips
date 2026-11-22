@@ -498,7 +498,7 @@ def main():
 
     ap = argparse.ArgumentParser(description="Assembler MIPS -> HEX")
     ap.add_argument("source",help="file .asm" )
-    ap.add_argument("-o","--outdir",help="output directory (default: hw/mem)")
+    ap.add_argument("-o","--outdir",help="output directory (default: mem)")
     ap.add_argument("--list",action="store_true",help="show program assembly")
     ap.add_argument("--text-base",default="0",help="text base address")
 
@@ -512,7 +512,7 @@ def main():
         ap.error(f"--text-base: 0x{TEXT_BASE:X} must be a 32-bit multiple of 4")
 
     SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__)) #get the directory of the script
-    MEM_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "../../hw/mem")) #get the default memory directory
+    MEM_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "../../mem")) #get the default memory directory
 
     outdir = args.outdir or MEM_DIR
     base = os.path.splitext(os.path.basename(args.source))[0]

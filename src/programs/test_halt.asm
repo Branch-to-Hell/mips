@@ -1,5 +1,5 @@
 # test_halt.asm - life_system address decoder and visible halt (CPU-14, LIFE-6)
-# Checked in hw/sim/halt_tb.v (do halt.do).
+# Checked in verif/halt_tb.v (do halt.do).
 # 1. Touches the first and last word of every region of the memory map (data, framebuffer
 #    mode A, stack, MMIO): none of them may halt the CPU.
 # 2. LEDR = 0x155: every valid access went through.

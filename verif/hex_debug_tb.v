@@ -1,5 +1,5 @@
 `timescale 1ns/1ns
-// PLT-4 test: HEX debug view on life_system. Run from hw/sim: do hex_debug.do
+// PLT-4 test: HEX debug view on life_system. Run from verif: do hex_debug.do
 /* Decodes the 6 displays back to digits and checks, for all 32 registers and both halves:
   1. reset held: each register preloaded with a different value shows on HEX
      (number in decimal on HEX5-4, the chosen half on HEX3-0, decimal point of HEX4 on)

@@ -1,4 +1,4 @@
-# PLT-6: video mode B on the board (top_video_b_test, runs hw/mem/test_mode_b_b0..b3.hex)
+# PLT-6: video mode B on the board (top_video_b_test, runs mem/test_mode_b_b0..b3.hex)
 
 set_global_assignment -name FAMILY "MAX 10"
 set_global_assignment -name DEVICE 10M50DAF484C7G

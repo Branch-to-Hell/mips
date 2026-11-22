@@ -13,7 +13,7 @@ module top_video_test (
 wire clk25;
 pll_25 pll (.inclk0(MAX10_CLK1_50), .c0(clk25), .locked());
 
-video_mode_a #(.INIT_FILE("../mem/fb_test.hex")) video ( // path from hw/quartus
+video_mode_a #(.INIT_FILE("../mem/fb_test.hex")) video ( // path from quartus
     .clk(clk25),
     .a_clk(clk25), .a_we(1'b0), .a_addr(14'd0), .a_wdata(32'd0), .a_rdata(),
     .VGA_R(VGA_R), .VGA_G(VGA_G), .VGA_B(VGA_B),

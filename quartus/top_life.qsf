@@ -1,4 +1,4 @@
-# PLT-3 / LIFE-5: Game of Life on the board (top_life, runs hw/mem/life_board_b0..b3.hex)
+# PLT-3 / LIFE-5: Game of Life on the board (top_life, runs mem/life_board_b0..b3.hex)
 
 set_global_assignment -name FAMILY "MAX 10"
 set_global_assignment -name DEVICE 10M50DAF484C7G

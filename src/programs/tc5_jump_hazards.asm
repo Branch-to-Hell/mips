@@ -5,7 +5,7 @@
 # Written as in MARS with Delayed branching OFF: NO nops anywhere. Every dependency is
 # back-to-back on purpose, so the hazard unit has to stall/forward, and the assembler's
 # nop after each branch/jump must not change what the program computes.
-# Run on mips_pipeline: from hw/sim, `do tc5.do` (assemble first: python sw/assembler/assembler.py sw/programs/<name>.asm).
+# Run on mips_pipeline: from verif, `do tc5.do` (assemble first: python src/assembler/assembler.py src/programs/<name>.asm).
 .text
 main:
     lui  $s6, 0xFFFF            # s6 = 0xFFFF0000 (MMIO base)

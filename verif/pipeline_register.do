@@ -1,4 +1,4 @@
-# Run from hw/sim in ModelSim: do pipeline_register.do
+# Run from verif in ModelSim: do pipeline_register.do
 # CPU-4: IF/ID, ID/EX, EX/MEM and MEM/WB registers (enable, flush, reset, valid).
 onerror {quit -code 1 -f}
 catch {quit -sim}

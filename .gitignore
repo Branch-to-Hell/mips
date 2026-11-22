@@ -31,7 +31,7 @@ vsim.wlf
 *.wlf
 modelsim.ini
 *.vstf
-hw/quartus/simulation/
+quartus/simulation/
 
 # ---- Node / web ----
 node_modules/
@@ -62,5 +62,5 @@ __pycache__/
 
 # ---- Platform Designer (generated from the .qsys, rebuild with qsys-generate) ----
 *.sopcinfo
-hw/quartus/sdram_sys/
-hw/sim/sdram_sys_sim/
+quartus/sdram_sys/
+verif/sdram_sys_sim/

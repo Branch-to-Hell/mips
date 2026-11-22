@@ -1,4 +1,4 @@
-# Run from hw/sim in ModelSim: do cpu5.do
+# Run from verif in ModelSim: do cpu5.do
 # CPU-5: hazard detection unit (stalls for data, load-use, branch and jr hazards).
 onerror {quit -code 1 -f}
 catch {quit -sim}

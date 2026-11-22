@@ -1,6 +1,6 @@
 `timescale 1ns/1ns
 // TC-15 test: graded algorithm (frequency of a value) on life_system with mips_pipeline,
-// the same hardware as the board. Run from hw/sim: do tc15.do (all 3 inputs)
+// the same hardware as the board. Run from verif: do tc15.do (all 3 inputs)
 /* One input per run, picked with -G (see tc15.do): PROGRAM = count_value_in1..3,
 N, TARGET and EXPECTED from docs/tc15_algorithm.md. The program's .data (n, target, array)
 comes from <PROGRAM>_data.hex through DMEM_INIT, like on the board. Checks:

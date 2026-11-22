@@ -3,7 +3,7 @@
 // (the codes of addu subu addiu), and the old 0x20 0x22 0x08 still work.
 // Runs the same program on the single-cycle mips_cpu and on mips_pipeline.
 // Every instruction only reads preset registers, so the pipeline needs no hazard unit.
-// Run from hw/sim in ModelSim: do cpu11.do
+// Run from verif in ModelSim: do cpu11.do
 module cpu11_tb;
 reg clk = 0, reset = 1;
 integer i, n = 0, errors = 0;

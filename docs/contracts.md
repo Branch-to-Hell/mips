@@ -103,7 +103,7 @@ The hardware doesn't implement the whole 4 GB. The address decoder looks at the 
 | SDRAM (phase 2) | defined in Sprint 2 | 64 MB | Doom code, data, heap and WAD |
 
 ### CPU memory bus
-The CPU has no memory inside except the instruction memory. Loads and stores go out through this bus, and the top level (`life_system`, PLT-3) sends each access to data, stack, framebuffer or MMIO by looking at the address. The same address decoder drives `mem_fault` (CPU-14): an address in no region of the memory map halts the CPU. While halted, `life_system` shows the error code: LEDR9 = halted, LEDR1-0 = cause, HEX = `E`, cause, bad address bits 15..0 (SW8 up: PC bits 23..0). SW9 still picks the register debug view. Checked in `hw/sim/halt_tb.v`.
+The CPU has no memory inside except the instruction memory. Loads and stores go out through this bus, and the top level (`life_system`, PLT-3) sends each access to data, stack, framebuffer or MMIO by looking at the address. The same address decoder drives `mem_fault` (CPU-14): an address in no region of the memory map halts the CPU. While halted, `life_system` shows the error code: LEDR9 = halted, LEDR1-0 = cause, HEX = `E`, cause, bad address bits 15..0 (SW8 up: PC bits 23..0). SW9 still picks the register debug view. Checked in `verif/halt_tb.v`.
 
 | Port | Dir | Notes |
 |---|---|---|
@@ -121,11 +121,11 @@ Phase 2 adds a `mem_stall` input here (CPU-9).
 The professor asks for **one byte per address** and big-endian fetch: the word is `mem[PC]`, `mem[PC+1]`, `mem[PC+2]`, `mem[PC+3]`, from the most significant byte to the least.
 - Built as **4 byte-lane banks** of 4,096 bytes each: bank *k* holds the bytes at addresses with `addr[1:0] = k`, indexed by `addr[13:2]`.
 - All 4 banks are read in the same cycle and joined as `{bank0, bank1, bank2, bank3}`, so fetch takes one cycle, the same as before.
-- **Image files** for a program `<name>` (in `hw/mem/`), all with one byte per line, 2 hex digits, LF, no addresses:
+- **Image files** for a program `<name>` (in `mem/`), all with one byte per line, 2 hex digits, LF, no addresses:
   - `<name>_bytes.hex`: one byte per address, big-endian (the professor's loadable image).
   - `<name>_b0.hex` … `<name>_b3.hex`: bank *k* = the bytes at addresses with `addr[1:0] = k`; line *i* is the byte of instruction *i*.
   - `instruction_memory` loads the 4 bank files with `$readmemh` from the prefix in `IMEM_INIT` (e.g. `"../mem/life_board"`), in ModelSim and in Quartus.
-  - The assembler writes them from the ASM (TC-13), together with the word image `<name>.hex` and the data image `<name>_data.hex`. Everything goes to `hw/mem/` by default (or to the folder given with `-o`), never to `sw/programs/`. For a word `.hex` that does not come from our assembler (for example GNU as output), `sw/tools/hex2banks.py` makes the same files.
+  - The assembler writes them from the ASM (TC-13), together with the word image `<name>.hex` and the data image `<name>_data.hex`. Everything goes to `mem/` by default (or to the folder given with `-o`), never to `src/programs/`. For a word `.hex` that does not come from our assembler (for example GNU as output), `src/tools/hex2banks.py` makes the same files.
   - **No `.mif` files** for program images: `$readmemh` with `.hex` works the same in ModelSim and Quartus.
   - **`.data` (TC-15):** `data_memory` loads `<name>_data.hex` (one word per line from `0x1001_0000`) through its `INIT_FILE` parameter, as the initial content of its RAM; the rest of the region starts at 0. `life_system` passes it as `DMEM_INIT`. `top_program` (Quartus revision `program`) runs any assembled program with its `.data`, picked in `program.qsf`, without touching the Game of Life build. The data is loaded at configuration time only: a reset does not restore it.
 
@@ -165,20 +165,20 @@ Both are dual-port RAMs: the CPU writes, the VGA reads.
 
 ## SDRAM (PLT-7)
 - **Chip:** ISSI IS42S16320D-7, 32M × 16 = 64 MB, 4 banks, 13 row bits, 10 column bits.
-- **Platform Designer system `sdram_sys`** (`hw/quartus/sdram_sys.qsys`, rebuilt by `sdram_sys.tcl`): Intel SDRAM Controller (CAS latency 2, refresh every 7.8125 µs, 100 µs power-up) behind a **32-bit Avalon-MM bridge**. Platform Designer adds the 32 → 16 width adapter, so the master sees 64 MB of 32-bit words.
+- **Platform Designer system `sdram_sys`** (`quartus/sdram_sys.qsys`, rebuilt by `sdram_sys.tcl`): Intel SDRAM Controller (CAS latency 2, refresh every 7.8125 µs, 100 µs power-up) behind a **32-bit Avalon-MM bridge**. Platform Designer adds the 32 → 16 width adapter, so the master sees 64 MB of 32-bit words.
 - **Interface `mem`** (what the CPU bridge, PLT-8, masters): 26-bit **byte** address (multiple of 4), `read`/`write`, `writedata`/`readdata` 32 bits, `byteenable` 4 bits, `waitrequest` (hold the command while it's 1), `readdatavalid` (read data arrives a few cycles later). One access at a time takes ~6–7 cycles.
 - **Byte order:** Avalon byte lanes are little-endian (byte address A+k = bits 8k+7..8k = `byteenable[k]`). The CPU is big-endian, so the PLT-8 bridge **swaps the 4 bytes** of `writedata`/`readdata` and reverses `byteenable`. Then a file written byte by byte into SDRAM (WAD loading, PLT-10) reads back correctly with `lb`.
-- **Quartus:** revision `sdram_test` (`top_sdram_test`) adds `sdram_sys.qsys` with `QSYS_FILE`, so Quartus generates its HDL during compilation. `hw/sim/sdram.do` generates the simulation HDL (with the controller's memory model) by itself.
+- **Quartus:** revision `sdram_test` (`top_sdram_test`) adds `sdram_sys.qsys` with `QSYS_FILE`, so Quartus generates its HDL during compilation. `verif/sdram.do` generates the simulation HDL (with the controller's memory model) by itself.
 
 ## WAD loading (PLT-10)
 - **Hardware:** `sdram_sys` has a second master on the SDRAM, a **JTAG to Avalon Master** (`jtag`, no ports at the top level). Platform Designer arbitrates it with the CPU bridge, so the PC can read and write the SDRAM over the USB-Blaster while the design runs. Any top level with `sdram_sys` gets it (today `sdram_test`, later `top_doom`).
-- **Script:** `sw/tools/wad_load.tcl` (System Console) writes a file into the SDRAM, reads it back and compares it: `system-console -cli --script=sw/tools/wad_load.tcl <file> [offset]` prints `PASS: the SDRAM holds the file byte-exact`. Inside System Console: `source sw/tools/wad_load.tcl`, then `wad_load <file> [offset]` or `wad_verify <file> [offset]` (read back only).
+- **Script:** `src/tools/wad_load.tcl` (System Console) writes a file into the SDRAM, reads it back and compares it: `system-console -cli --script=src/tools/wad_load.tcl <file> [offset]` prints `PASS: the SDRAM holds the file byte-exact`. Inside System Console: `source src/tools/wad_load.tcl`, then `wad_load <file> [offset]` or `wad_verify <file> [offset]` (read back only).
 - **Where:** byte *i* of the file goes to SDRAM byte offset `offset + i`. Default offset `0x0300_0000` (the top 16 MB of the SDRAM; Doom's code, data and heap use the lower 48 MB). Provisional until the SDRAM region gets its CPU address in the memory map; then the WAD is at `SDRAM base + 0x0300_0000`.
 - **Byte order:** the JTAG master writes Avalon byte lanes (byte address A+k = `byteenable[k]`), and the CPU bridge swaps the bytes of each word (see SDRAM above), so the CPU sees the file in order: `lb` at offset + *i* = file byte *i*, and `lw` = 4 file bytes, most significant first (big-endian, like the WAD read by `-EB` code).
 - **`sdram_test`:** the smoke test writes all 64 MB after reset and on KEY0, so **SW9 = 1** (LEDR8 on) keeps it from starting; set it before loading. The file is lost on power-off, and a KEY1 reset holds the controller in reset (no refresh while the key is down), so after a reset run `wad_verify` or load again.
 
 ## Reference simulator trace (TC-6)
-`sw/tools/ref_sim.py` runs an assembler image (`<name>.hex` + `<name>_data.hex`) and prints one line per register write, in program order. The Verilator harness (TC-7) prints **the same format**, so the two traces compare with a plain `diff` (TC-11).
+`src/tools/ref_sim.py` runs an assembler image (`<name>.hex` + `<name>_data.hex`) and prints one line per register write, in program order. The Verilator harness (TC-7) prints **the same format**, so the two traces compare with a plain `diff` (TC-11).
 
 ```
 PC=0x00000000 R8 <= 0x00000005

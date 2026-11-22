@@ -1,5 +1,5 @@
 TC-16 trace, J j: PC 00000024, word 0800000c
-Program sw/programs/tc16_trace.asm on mips_pipeline (hw/sim/trace_tb.v, do trace.do).
+Program src/programs/tc16_trace.asm on mips_pipeline (verif/trace_tb.v, do trace.do).
 Each block is one clock cycle; values are the state during the cycle (sampled at the edge that ends it).
 
 Before: $t4 = 00000000  (j_target skips addi $t4, $zero, 1)

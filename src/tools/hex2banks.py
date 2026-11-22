@@ -13,7 +13,7 @@ Line i of a bank file is the byte of instruction i. instruction_memory.v loads t
 with $readmemh, from the prefix given in IMEM_INIT (e.g. "../mem/life_board").
 
 Usage (from the repo root):
-    python sw/tools/hex2banks.py hw/mem/life_board.hex [more.hex ...]
+    python src/tools/hex2banks.py mem/life_board.hex [more.hex ...]
 """
 import sys
 from pathlib import Path

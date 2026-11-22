@@ -1,4 +1,4 @@
-# Run from hw/sim/ in ModelSim:  cd <repo>/hw/sim ; do video_mode_a.do
+# Run from verif/ in ModelSim:  cd <repo>/verif ; do video_mode_a.do
 # Simulates one full frame (about 17 ms) and saves frame.ppm
 catch {quit -sim}
 vlib work

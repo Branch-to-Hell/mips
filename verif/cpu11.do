@@ -1,4 +1,4 @@
-# Run from hw/sim in ModelSim: do cpu11.do
+# Run from verif in ModelSim: do cpu11.do
 # CPU-11: add/sub/addi with the professor's codes 0x21 0x23 0x09 and the old ones, on both CPUs.
 onerror {quit -code 1 -f}
 catch {quit -sim}

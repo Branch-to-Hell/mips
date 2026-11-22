@@ -1,6 +1,6 @@
 `timescale 1ns/1ps
 // PLT-7 test: sdram_smoke + the real Platform Designer system (bridge + Intel SDRAM
-// controller) + the controller's own SDRAM memory model. Run from hw/sim: do sdram.do
+// controller) + the controller's own SDRAM memory model. Run from verif: do sdram.do
 /* The model has no I/O delays, so this checks the logic (commands, CAS latency, the
 32 -> 16 width adapter, byte enables), not the board timing: that is TimeQuest's job.
 Checks:

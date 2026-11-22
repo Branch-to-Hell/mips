@@ -1,7 +1,7 @@
-# Run from hw/sim in ModelSim: do trace.do
-# TC-16: one trace per format (R add, I lw, J j) on mips_pipeline. Writes docs/tc16/trace_R.txt,
+# Run from verif in ModelSim: do trace.do
+# TC-16: one trace per format (R add, I lw, J j) on mips_pipeline. Writes verif/traces/trace_R.txt,
 # trace_I.txt and trace_J.txt. Assemble first, from the repo root:
-#   python sw/assembler/assembler.py sw/programs/tc16_trace.asm
+#   python src/assembler/assembler.py src/programs/tc16_trace.asm
 onerror {quit -code 1 -f}
 catch {quit -sim}
 vlib work

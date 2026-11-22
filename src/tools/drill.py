@@ -1,14 +1,14 @@
 """TC-12 professor drill: unseen MARS program -> assemble -> check -> board, in one command.
 
 From the repo root:
-    python sw/tools/drill.py <program.asm> [--mars <Mars4_5.jar>] [--cycles N]
+    python src/tools/drill.py <program.asm> [--mars <Mars4_5.jar>] [--cycles N]
 
 Steps (each one timed):
   1. mars_compat.py rewrites MARS pseudo-instructions/syscalls -> build/drill/<name>.asm
-  2. our assembler -> hw/mem/<name>_b0..b3.hex (+ <name>_data.hex)
+  2. our assembler -> mem/<name>_b0..b3.hex (+ <name>_data.hex)
   3. MARS runs the ORIGINAL program: final registers and data words (the expected values)
-  4. ModelSim runs our image on life_system with mips_pipeline (hw/sim/drill_tb.v)
-  5. compares registers and data, and prints what to set in hw/quartus/program.qsf and
+  4. ModelSim runs our image on life_system with mips_pipeline (verif/drill_tb.v)
+  5. compares registers and data, and prints what to set in quartus/program.qsf and
      which registers to look at on the board (SW9 debug view)
 MARS: --mars, or the MARS_JAR environment variable, or ~/Downloads/Mars4_5.jar.
 ModelSim (vlog/vsim) must be on PATH. Without MARS, step 3 and the comparison are skipped.
@@ -22,7 +22,7 @@ import sys
 import time
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../.."))
-SIM = os.path.join(ROOT, "hw", "sim")
+SIM = os.path.join(ROOT, "verif")
 NAMES = ["zero", "at", "v0", "v1", "a0", "a1", "a2", "a3", "t0", "t1", "t2", "t3", "t4", "t5", "t6", "t7",
          "s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7", "t8", "t9", "k0", "k1", "gp", "sp", "fp", "ra"]
 DATA_BASE = 0x10010000
@@ -125,19 +125,19 @@ def main():
     converted = os.path.join(build, name + ".asm")
 
     def compat():
-        r = run([sys.executable, os.path.join(ROOT, "sw", "tools", "mars_compat.py"), args.source, "-o", converted])
+        r = run([sys.executable, os.path.join(ROOT, "src", "tools", "mars_compat.py"), args.source, "-o", converted])
         print(r.stdout.rstrip())
         if r.returncode != 0:
             sys.exit("\nFix the ERROR lines in the original program and run the drill again.")
     step("1. MARS compatibility (mars_compat.py)", compat)
 
     def assemble():
-        r = run([sys.executable, os.path.join(ROOT, "sw", "assembler", "assembler.py"), converted])
+        r = run([sys.executable, os.path.join(ROOT, "src", "assembler", "assembler.py"), converted])
         print(r.stdout.strip())
         if r.returncode != 0:
             sys.exit("Assembler error: fix the program (the line numbers are in build/drill/" + name + ".asm)")
-        return os.path.isfile(os.path.join(ROOT, "hw", "mem", name + "_data.hex")) and ".data" in open(converted).read()
-    with_data = step("2. Assemble (sw/assembler/assembler.py -> hw/mem)", assemble)
+        return os.path.isfile(os.path.join(ROOT, "mem", name + "_data.hex")) and ".data" in open(converted).read()
+    with_data = step("2. Assemble (src/assembler/assembler.py -> mem)", assemble)
 
     jar = find_mars(args.mars)
     mars = None
@@ -189,7 +189,7 @@ def main():
             if regs.get(i):
                 print(f"   ${n:<9} {regs[i]:08x}")
 
-    print("\n== Board (hw/quartus/program.qsf, revision 'program')")
+    print("\n== Board (quartus/program.qsf, revision 'program')")
     print(f'   set_parameter -name PROGRAM "{name}"')
     print(f"   set_parameter -name WITH_DATA {1 if with_data else 0}")
     print("   Compile, program the board. Check with SW9 up and SW4-0 = register number (SW5 = upper half):")

@@ -1,5 +1,5 @@
 `timescale 1ns/1ns
-// PLT-3 / LIFE-5 / LIFE-3 / LIFE-4 test: life_system running life_board.hex. Run from hw/sim: do life.do
+// PLT-3 / LIFE-5 / LIFE-3 / LIFE-4 test: life_system running life_board.hex. Run from verif: do life.do
 /* Reads the 32x24 board back from the framebuffer (every 4x4 block must be all white
 or all black) and compares each generation with a Game of Life model written here.
 Short debounce (50 cycles) so the key presses are fast. Checks:

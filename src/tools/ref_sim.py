@@ -1,7 +1,7 @@
-"""Reference MIPS simulator for the .hex images written by sw/assembler (TC-6).
+"""Reference MIPS simulator for the .hex images written by src/assembler (TC-6).
 
 Usage:
-    python sw/tools/ref_sim.py <file>.hex [--text-base 0x00400000]
+    python src/tools/ref_sim.py <file>.hex [--text-base 0x00400000]
            [--data <file>_data.hex] [--max-steps N] [--no-delay-slot] [--flat-mem]
            [--init R<n>=<value> ...] [--dump-regs] [--dump-mem ADDR:COUNT ...]
 
@@ -38,7 +38,7 @@ TEXT_BASE = 0x00000000
 TEXT_SIZE = 0x4000          # 16 KB text region (contracts.md "Memory map")
 DATA_BASE = 0x10010000
 
-# Regions of the memory map, as decoded in hw/rtl/life_system.v (inclusive ranges).
+# Regions of the memory map, as decoded in rtl/life_system.v (inclusive ranges).
 REGIONS = [
     (0x10010000, 0x10013FFF, "data"),
     (0x10040000, 0x1004BFFF, "framebuffer A"),

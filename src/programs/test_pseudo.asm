@@ -1,7 +1,7 @@
 # Self-checking test for the pseudo-instructions li, la, move and nop.
 # Expected: the word `result` = 125 (0x0000007D), $s3 = 0x7D.
 # Uses only phase 1, so it runs on our CPU today:
-#   python sw/tools/drill.py sw/programs/test_pseudo.asm
+#   python src/tools/drill.py src/programs/test_pseudo.asm
 .data
 value:      .word 25
 result:     .word 0

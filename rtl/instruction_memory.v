@@ -8,7 +8,7 @@ The 4 banks are read in the same cycle and joined, so a fetch still takes one cy
 */
 module instruction_memory #(
     // Image prefix: loads <INIT_FILE>_b0.hex .. <INIT_FILE>_b3.hex (one byte per line,
-    // made by sw/tools/hex2banks.py). Empty = no init.
+    // made by src/tools/hex2banks.py). Empty = no init.
     parameter INIT_FILE = ""
 )(
     input clk,

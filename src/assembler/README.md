@@ -7,20 +7,20 @@ Two-pass MIPS assembler in Python. It turns a `.asm` file into the memory images
 From the repository root:
 
 ```
-python sw/assembler/assembler.py sw/programs/<name>.asm
+python src/assembler/assembler.py src/programs/<name>.asm
 ```
 
-Example: `python sw/assembler/assembler.py sw/programs/life_board.asm` rewrites `hw/mem/life_board*.hex`.
+Example: `python src/assembler/assembler.py src/programs/life_board.asm` rewrites `mem/life_board*.hex`.
 
 | Option               | Meaning                                                                                                                                                   |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `-o <folder>`        | Write the files to `<folder>` instead of `hw/mem/` (created if missing).                                                                                  |
+| `-o <folder>`        | Write the files to `<folder>` instead of `mem/` (created if missing).                                                                                  |
 | `--list`             | Print the listing (address, 32-bit word, instruction text) and the labels.                                                                                |
 | `--text-base <addr>` | Address of the first instruction. Default `0` (the professor's initial PC). `0x00400000` is only for comparing with a MARS dump. Must be a multiple of 4. |
 
 ## Output files
 
-Files go to `hw/mem/` by default, or to the `-o` folder. Nothing is written to `sw/programs/`. Every file has one value per line in lowercase hex, with no address and no header (read with `$readmemh`).
+Files go to `mem/` by default, or to the `-o` folder. Nothing is written to `src/programs/`. Every file has one value per line in lowercase hex, with no address and no header (read with `$readmemh`).
 
 | File                              | Content                                                                                                                                                      |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -81,7 +81,7 @@ Data memory is big-endian: the byte at the lowest address is the most significan
 
 ## Tests
 
-All programs are in `sw/programs/`. The two self-checking ISA tests are documented in this section. The other programs (`t1`–`t3`, `tc4_*`, `life*`, `test_mmio`, `test_stack`, and so on) are CPU programs used by the testbenches and the hardware images.
+All programs are in `src/programs/`. The two self-checking ISA tests are documented in this section. The other programs (`t1`–`t3`, `tc4_*`, `life*`, `test_mmio`, `test_stack`, and so on) are CPU programs used by the testbenches and the hardware images.
 
 Each self-checking test stores its results in data memory and has its expected values written below.
 
@@ -93,12 +93,12 @@ Each self-checking test stores its results in data memory and has its expected v
 **On our CPU:** `drill.py` (TC-12) assembles the program, runs it in MARS and on `mips_pipeline` in ModelSim, and compares registers and data memory:
 
 ```
-python sw/tools/drill.py sw/programs/test_pseudo.asm
+python src/tools/drill.py src/programs/test_pseudo.asm
 ```
 
 It must end with `PASS`. This is the check that MARS programs (delayed branching off) run unchanged on our CPU.
 
-**In MARS:** run the program and look at the data segment (or from the command line: `java -jar Mars4_5.jar nc 2000 0x10010000-0x100100a0 sw/programs/test_phase2.asm`).
+**In MARS:** run the program and look at the data segment (or from the command line: `java -jar Mars4_5.jar nc 2000 0x10010000-0x100100a0 src/programs/test_phase2.asm`).
 
 ### Expected values of `test_phase2.asm`
 
@@ -153,8 +153,8 @@ The program then loops in `end:` (`j end`).
 To compare the code with MARS, dump `.text` from MARS with the Default memory configuration (_Settings → Memory Configuration → Default_, _Delayed branching_ off):
 
 ```
-java -jar Mars4_5.jar nc a dump .text HexText mars_<name>.hex sw/programs/<name>.asm
-python sw/assembler/assembler.py sw/programs/<name>.asm -o out --text-base 0x00400000
+java -jar Mars4_5.jar nc a dump .text HexText mars_<name>.hex src/programs/<name>.asm
+python src/assembler/assembler.py src/programs/<name>.asm -o out --text-base 0x00400000
 ```
 
 Then compare the two `.hex` files (`fc.exe` on Windows, `diff` elsewhere). The differences listed under _Known differences with MARS_ are expected.
@@ -173,7 +173,7 @@ This one does change results: MARS is little-endian and our CPU is big-endian, s
 
 ## Diagnostics
 
-Errors stop the assembler with the line number and exit code 1. Each one has an example in `sw/programs/errors/`. The first line of each `errors/*.asm` file is `# Expected:` followed by the exact message the assembler must print.
+Errors stop the assembler with the line number and exit code 1. Each one has an example in `src/programs/errors/`. The first line of each `errors/*.asm` file is `# Expected:` followed by the exact message the assembler must print.
 
 | Error                                                            | Example                   |
 | ---------------------------------------------------------------- | ------------------------- |
@@ -186,11 +186,11 @@ Errors stop the assembler with the line number and exit code 1. Each one has an 
 | `j`/`jal` target outside the 256 MiB region of `PC + 4`          | `jump_region_edge.asm`    |
 | Branch or jump target not a multiple of 4                        | `misaligned.asm`          |
 
-`python sw/tools/check_asm_errors.py` runs every example and checks the message and exit code 1.
+`python src/tools/check_asm_errors.py` runs every example and checks the message and exit code 1.
 
 Example:
 
 ```
-python sw/assembler/assembler.py sw/programs/errors/misaligned.asm
+python src/assembler/assembler.py src/programs/errors/misaligned.asm
 Error: line 5, instruction 'j': misaligned target 0x00000006 (must be a multiple of 4)
 ```

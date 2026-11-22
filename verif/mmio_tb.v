@@ -1,5 +1,5 @@
 `timescale 1ns/1ns
-// PLT-2 test: CPU + data memory + MMIO running test_mmio.hex. Run from hw/sim: do mmio.do
+// PLT-2 test: CPU + data memory + MMIO running test_mmio.hex. Run from verif: do mmio.do
 /* Short debounce (50 cycles) so the test is fast.
 The program loops with j (CPU-3); without CPU-3 it runs again when the PC wraps,
 every 4,096 cycles. The waits use that worst case (one "pass"), so both work

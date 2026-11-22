@@ -1,4 +1,4 @@
-# Run from hw/sim in ModelSim: do cpu4.do
+# Run from verif in ModelSim: do cpu4.do
 # CPU-4: five-stage pipeline (mips_pipeline) with independent instructions, lw/sw and reset.
 onerror {quit -code 1 -f}
 catch {quit -sim}

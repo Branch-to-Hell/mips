@@ -1,7 +1,7 @@
 # test_mmio.asm - MMIO test for PLT-2 (switches, keys, LEDs, HEX).
-# Machine code: hw/mem/test_mmio.hex, from sw/assembler/assembler.py:
-#   python sw/assembler/assembler.py sw/programs/test_mmio.asm -o hw/mem
-# Checked in hw/sim/mmio_tb.v and on the board with top_mmio_test.
+# Machine code: mem/test_mmio.hex, from src/assembler/assembler.py:
+#   python src/assembler/assembler.py src/programs/test_mmio.asm -o mem
+# Checked in verif/mmio_tb.v and on the board with top_mmio_test.
 #
 # With CPU-3 the program loops with j. Before CPU-3, j does nothing: the rest of
 # the instruction memory is 0 (nop) and the PC wraps around the 16 KB text region,

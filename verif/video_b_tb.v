@@ -1,5 +1,5 @@
 `timescale 1ns/1ps
-// PLT-6 test: life_system with MODE_B = 1 running test_mode_b.hex. Run from hw/sim: do video_b.do
+// PLT-6 test: life_system with MODE_B = 1 running test_mode_b.hex. Run from verif: do video_b.do
 /* The CPU fills the screen and changes the palette (PLT-6 "done when"). Timer at
 100 cycles per ms and debounce of 50 cycles, so the program's 20 ms wait is short.
 The end of each palette update is the write to HEX (sw $s2, 0x1C($s0), HEX = offset), seen on the bus.

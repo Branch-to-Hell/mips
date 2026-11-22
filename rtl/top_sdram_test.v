@@ -4,7 +4,7 @@ Intel SDRAM controller) <- sdram_smoke (writes a pattern, reads it back)
 PLT-9: the whole 64 MB (16M words), about 10 s per run
 The test runs once after reset and again on every KEY0 press
 PLT-10: sdram_sys also has a JTAG to Avalon Master, so System Console can load a file
-(the WAD) into the SDRAM while this design runs (sw/tools/wad_load.tcl). The smoke test
+(the WAD) into the SDRAM while this design runs (src/tools/wad_load.tcl). The smoke test
 writes all 64 MB, so SW9 = 1 keeps it from starting: set SW9 before loading the WAD
     LEDR0 = test running, LEDR1 = done and passed, LEDR2 = done with errors,
     LEDR8 = SW9 lock on (smoke test will not start), LEDR9 = PLL locked

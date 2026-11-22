@@ -2,16 +2,16 @@
 Makes the initial image for the video mode A framebuffer (128x96, 12 bits per pixel).
 
 Usage (from the repo folder):
-  python sw/tools/img2fb.py             test pattern
-  python sw/tools/img2fb.py photo.png   any image (needs: pip install pillow)
+  python src/tools/img2fb.py             test pattern
+  python src/tools/img2fb.py photo.png   any image (needs: pip install pillow)
 
-Output: hw/mem/fb_test.hex, one pixel per line (RGB, 4 bits each), row by row.
+Output: mem/fb_test.hex, one pixel per line (RGB, 4 bits each), row by row.
 """
 import sys
 from pathlib import Path
 
 W, H = 128, 96
-OUT = Path(__file__).resolve().parents[2] / "hw" / "mem" / "fb_test.hex"
+OUT = Path(__file__).resolve().parents[2] / "mem" / "fb_test.hex"
 
 
 def test_pattern():

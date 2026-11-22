@@ -1,4 +1,4 @@
-# Run from hw/sim/ in ModelSim:  cd <repo>/hw/sim ; do mips_cpu.do
+# Run from verif/ in ModelSim:  cd <repo>/verif ; do mips_cpu.do
 catch {quit -sim}
 vlib work
 vlog ../rtl/*.v mips_cpu_tb.v

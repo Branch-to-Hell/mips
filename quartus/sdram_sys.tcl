@@ -1,5 +1,5 @@
 # PLT-7: Platform Designer system with the SDRAM controller of the DE10-Lite
-# Rebuilds sdram_sys.qsys from scratch (run from hw/quartus):
+# Rebuilds sdram_sys.qsys from scratch (run from quartus):
 #     qsys-script --script=sdram_sys.tcl
 # Chip: ISSI IS42S16320D-7TL, 32M x 16 (64 MB), 4 banks, 13 row bits, 10 column bits
 #
@@ -9,7 +9,7 @@
 # Platform Designer adds the 32 → 16 width adapter between them, so the CPU side sees
 # 64 MB of 32-bit words with byte enables.
 # PLT-10: bridge and jtag are two masters of sdram.s1 (Platform Designer adds the arbiter).
-# System Console drives jtag over the USB-Blaster to load the WAD (sw/tools/wad_load.tcl).
+# System Console drives jtag over the USB-Blaster to load the WAD (src/tools/wad_load.tcl).
 
 package require -exact qsys 16.0
 

@@ -7,7 +7,7 @@ Always use the **frozen build** (tag `demo`): never a newer `.sof` or program im
 
 ## Setup
 - [ ] Laptop with Quartus Programmer, USB-Blaster driver working
-- [ ] `.sof` and `hw/mem/*.hex` images from the `demo` tag (also on a USB drive)
+- [ ] `.sof` and `mem/*.hex` images from the `demo` tag (also on a USB drive)
 - [ ] DE10-Lite + USB cable, VGA monitor + VGA cable tested
 - [ ] Switch/key mapping card printed or on screen
 

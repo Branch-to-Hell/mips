@@ -1,4 +1,4 @@
-# Run from hw/sim in ModelSim: do sdram.do
+# Run from verif in ModelSim: do sdram.do
 # First generates the simulation HDL of the Platform Designer system (sdram_sys_sim/,
 # not in git) from ../quartus/sdram_sys.qsys, including the controller's memory model
 onerror {quit -code 1 -f}

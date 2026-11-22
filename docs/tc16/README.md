@@ -7,16 +7,16 @@ Every case the professor asks for, the test that covers it and how to reproduce 
 From the repo root (PowerShell), assemble the programs once:
 
 ```
-foreach ($p in "tc4_rtype","tc4_itype","tc4_shifts","tc4_memory","tc4_branches","tc4_jumps","tc5_data_hazards","tc5_load_use","tc5_branch_hazards","tc5_jump_hazards","tc16_trace","test_halt") { python sw/assembler/assembler.py sw/programs/$p.asm }
+foreach ($p in "tc4_rtype","tc4_itype","tc4_shifts","tc4_memory","tc4_branches","tc4_jumps","tc5_data_hazards","tc5_load_use","tc5_branch_hazards","tc5_jump_hazards","tc16_trace","test_halt") { python src/assembler/assembler.py src/programs/$p.asm }
 ```
 
-Then run the testbenches from `hw/sim` (ModelSim):
+Then run the testbenches from `verif` (ModelSim):
 
 ```
-cd hw/sim
+cd verif
 foreach ($t in "tc4","tc5","trace","instruction_memory","cpu11","cpu14","halt","cpu6") { vsim -c -do "do $t.do; quit -f" | Select-String "PASS|FAIL" }
 cd ../..
-python sw/tools/check_asm_errors.py
+python src/tools/check_asm_errors.py
 ```
 
 Results on Nov 21 (all PASS):
@@ -30,7 +30,7 @@ Results on Nov 21 (all PASS):
 | `cpu11.do` | professor's encodings `0x21 0x23 0x09` and the standard ones | PASS, 20 checks |
 | `cpu14.do`, `halt.do` | CPU-14 invalid accesses, and how the board shows them | PASS (7 cases, 34 checks; decoder 19 addresses) |
 | `cpu6.do` | delay slot: the instruction after a branch/jump always runs | PASS |
-| `check_asm_errors.py` | the 8 `sw/programs/errors/*.asm` examples | 8/8 PASS |
+| `check_asm_errors.py` | the 8 `src/programs/errors/*.asm` examples | 8/8 PASS |
 
 ## 1. One case per instruction
 
@@ -76,18 +76,18 @@ Covers the whole Phase 1 set (20 instructions plus `addu subu addiu`), so the pr
 
 | Case | Test |
 |---|---|
-| Assembler errors | `python sw/tools/check_asm_errors.py`: the 8 examples in `sw/programs/errors/` (unknown mnemonic, invalid register, duplicate label, undefined label, out of range, wrong number of operands, `j` outside its 256 MiB region, misaligned target). Each file starts with its expected message; the script checks the message and exit code 1 |
+| Assembler errors | `python src/tools/check_asm_errors.py`: the 8 examples in `src/programs/errors/` (unknown mnemonic, invalid register, duplicate label, undefined label, out of range, wrong number of operands, `j` outside its 256 MiB region, misaligned target). Each file starts with its expected message; the script checks the message and exit code 1 |
 | Invalid data access (CPU-14) | `cpu14.do`: 7 cases (fetch outside text, misaligned fetch, `lw`/`sw` with no region and misaligned, precise order), nothing is written. `halt.do`: on `life_system` (the board hardware), `sw` to 0x7FFFF000 halts with LEDR = 0x203 and HEX = `E3F000` |
 
 ## 4. Traces (R, I, J)
 
-`trace.do` runs `sw/programs/tc16_trace.asm` and follows one instruction of each format through the 5 stages, one block per clock cycle:
+`trace.do` runs `src/programs/tc16_trace.asm` and follows one instruction of each format through the 5 stages, one block per clock cycle:
 
 | Trace | Instruction | PC | Result |
 |---|---|---|---|
-| [`trace_R.txt`](trace_R.txt) | `add $t2, $t0, $t1` | 0x1C | `$t2` = 5 + 7 = 0x0000000C |
-| [`trace_I.txt`](trace_I.txt) | `lw $t3, 4($s1)` | 0x20 | `$t3` = mem[0x10010004] = 0xCAFE1234 |
-| [`trace_J.txt`](trace_J.txt) | `j j_target` | 0x24 | IF fetches the delay slot (0x28), then 0x30; `$t4` stays 0 |
+| [`trace_R.txt`](../../verif/traces/trace_R.txt) | `add $t2, $t0, $t1` | 0x1C | `$t2` = 5 + 7 = 0x0000000C |
+| [`trace_I.txt`](../../verif/traces/trace_I.txt) | `lw $t3, 4($s1)` | 0x20 | `$t3` = mem[0x10010004] = 0xCAFE1234 |
+| [`trace_J.txt`](../../verif/traces/trace_J.txt) | `j j_target` | 0x24 | IF fetches the delay slot (0x28), then 0x30; `$t4` stays 0 |
 
 Each trace has: state before; **IF** (PC, the 4 bytes, the word); **ID** (IF/ID register, fields, extended immediate, every control signal, operands read, stall and redirect); **EX** (ID/EX register, ALU inputs and result); **MEM** (EX/MEM register, memory bus); **WB** (MEM/WB register, register file write); state after. The testbench also checks the results and that each instruction took 5 consecutive cycles.
 

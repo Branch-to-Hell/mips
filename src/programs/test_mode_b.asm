@@ -1,8 +1,8 @@
 # test_mode_b.asm - Video mode B test for PLT-6.
-# Machine code: hw/mem/test_mode_b.hex, from sw/assembler/assembler.py:
-#   python sw/assembler/assembler.py sw/programs/test_mode_b.asm -o hw/mem
-#   python sw/tools/hex2banks.py hw/mem/test_mode_b.hex   (CPU-12 bank images, until TC-13)
-# Checked in hw/sim/video_b_tb.v.
+# Machine code: mem/test_mode_b.hex, from src/assembler/assembler.py:
+#   python src/assembler/assembler.py src/programs/test_mode_b.asm -o mem
+#   python src/tools/hex2banks.py mem/test_mode_b.hex   (CPU-12 bank images, until TC-13)
+# Checked in verif/video_b_tb.v.
 #
 # Fills the 320x200 screen with diagonal bands: pixel (x, y) = palette index (x + y) mod 256,
 # then rotates the palette every 20 ms (palette cycling): the bands move across the screen
