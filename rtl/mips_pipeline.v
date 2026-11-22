@@ -23,10 +23,18 @@
 // HI/LO with mult multu div divu mfhi mflo mthi mtlo (mult_div.v, in EX).
 // IMEM_INIT is the prefix of four big-endian byte-bank images (_b0..b3.hex).
 // RESET_PC = 0 like mips_cpu (contracts.md: text base 0, CPU-13).
+// CPU-9 (contracts.md "Waiting for memory"): mem_stall freezes the whole pipeline while
+// the load/store in MEM is not done, and with EXT_TEXT = 1 a PC in the external text
+// region (the SDRAM, contracts.md "Doom memory") is fetched through ifetch_* and IF
+// waits until ifetch_ready.
 module mips_pipeline #(
     parameter IMEM_INIT = "",
     parameter REGS_INIT = "",
-    parameter RESET_PC = 32'h0000_0000   // text base; the text region is 16 KB from here
+    parameter TEXT_BASE = 32'h0000_0000, // on-chip text: 16 KB from here
+    parameter RESET_PC = TEXT_BASE,      // first fetch
+    parameter EXT_TEXT = 0,              // 1 = also fetch from the external text region
+    parameter [31:0] EXT_TEXT_BASE = 32'h2000_0000,
+    parameter EXT_TEXT_BITS = 26         // its size: 2^26 = 64 MB
 )(
     input clk, reset,
     output [31:0] mem_addr, mem_wdata,
@@ -42,23 +50,38 @@ module mips_pipeline #(
     // CPU-14: the top-level decoder sets mem_fault when mem_addr is in no region.
     // The CPU only looks at it while the instruction in MEM is a load/store.
     input mem_fault,
+    // CPU-9: 1 = the load/store in MEM doesn't finish this cycle. Everything holds
+    // (WB gets a bubble); mem_addr/mem_wdata/mem_be/mem_re/mem_we stay the same.
+    input mem_stall,
+    // CPU-9: instruction fetch from the external text region (EXT_TEXT = 1).
+    // ifetch_req = 1 while fetch_pc (ifetch_addr) is there; ifetch_data is taken on
+    // the edge where ifetch_ready = 1, and must stay valid while ifetch_addr is unchanged
+    // (a cache hit does). Until then IF holds and ID waits.
+    output [31:0] ifetch_addr,
+    output ifetch_req,
+    input [31:0] ifetch_data,
+    input ifetch_ready,
     output reg halted,             // 1 = stopped by a halt; only reset clears it
     output reg [1:0] halt_cause,   // 1 = fetch, 2 = load, 3 = store (0 = running)
     output reg [31:0] halt_pc,     // PC of the instruction that failed
     output reg [31:0] halt_addr    // the bad address (the PC itself for a fetch)
 );
 // CPU-5: a stall holds fetch_pc and IF/ID and sends a bubble into ID/EX
-// (valid_in = 0 below); EX, MEM and WB keep going. CPU-9 will add the
-// whole-pipeline memory wait. No flushes: the delay slot always runs (CPU-6).
-localparam [31:0] TEXT_BASE = RESET_PC;
+// (valid_in = 0 below); EX, MEM and WB keep going. No flushes: the delay slot
+// always runs (CPU-6).
+// CPU-9: mem_stall holds every stage up to MEM and sends a bubble into WB (the
+// instruction already in WB writes once). A fetch that isn't ready holds IF and ID
+// (like a hazard stall), so a branch stays in ID until its delay slot is fetched and
+// redirects then; EX, MEM and WB keep going.
 
 // CPU-14: stop = a halt is starting now or already happened. Fetch freezes
 // and ID sends only bubbles; EX, MEM and WB drain what is older.
 wire stall;
 wire fetch_fault, access_fault;
+wire fetch_ready;
 wire stop = halted || fetch_fault || access_fault;
-wire if_id_enable = !stall && !stop, id_ex_enable = 1'b1;
-wire ex_mem_enable = 1'b1, mem_wb_enable = 1'b1;
+wire if_id_enable = !stall && !stop && fetch_ready && !mem_stall;
+wire id_ex_enable = !mem_stall, ex_mem_enable = !mem_stall, mem_wb_enable = 1'b1;
 wire if_id_flush = 1'b0, id_ex_flush = 1'b0;
 wire ex_mem_flush = 1'b0, mem_wb_flush = 1'b0;
 
@@ -76,11 +99,22 @@ always @(posedge clk) begin
     if (reset) fetch_pc <= RESET_PC;
     else if (if_id_enable) fetch_pc <= next_fetch_pc;
 end
+// CPU-9: where the instruction at fetch_pc comes from. Anything outside the external
+// region goes to the on-chip memory, always ready (a bad PC faults in ID, CPU-14).
+function in_ext_text(input [31:0] address);
+    in_ext_text = (EXT_TEXT != 0) &&
+                  (address[31:EXT_TEXT_BITS] == EXT_TEXT_BASE[31:EXT_TEXT_BITS]);
+endfunction
+wire fetch_ext = in_ext_text(fetch_pc);
+assign fetch_ready = !fetch_ext || ifetch_ready;
+assign ifetch_addr = fetch_pc;
+assign ifetch_req = fetch_ext && !stop;
 // IF/ID: 64 payload + 1 valid = 65 bits. Detailed reset/enable/update behavior
 // is in if_id_register.v; RAM output and saved PC update on the same edge.
 if_id_register #(.IMEM_INIT(IMEM_INIT)) if_id(
     .clk(clk), .reset(reset), .enable(if_id_enable), .flush(if_id_flush),
-    .fetch_pc(fetch_pc), .pc(id_pc), .instruction(id_instruction), .valid(id_valid)
+    .fetch_pc(fetch_pc), .fetch_ext(fetch_ext), .ext_instruction(ifetch_data),
+    .pc(id_pc), .instruction(id_instruction), .valid(id_valid)
 );
 
 // ID: decode control alongside operands, so they travel with the instruction.
@@ -173,7 +207,9 @@ hazard_unit hu(
 // CPU-14: a fetch fault is seen on the instruction in ID: its PC (the address
 // it was fetched from) is outside the 16 KB text region or not word aligned.
 // Every fetched instruction executes (no flush, CPU-6), so this one is real.
-assign fetch_fault = id_valid && ((id_pc[31:14] != TEXT_BASE[31:14]) || (id_pc[1:0] != 2'b00));
+// CPU-9: with EXT_TEXT the external region is a text region too.
+assign fetch_fault = id_valid && (((id_pc[31:14] != TEXT_BASE[31:14]) && !in_ext_text(id_pc)) ||
+                                  (id_pc[1:0] != 2'b00));
 
 // ID/EX: 154 payload + 1 valid = 155 bits.
 // Payload: PC(32, for halt_pc), A or link value(32), B/store data(32), immediate(32), destination(5), shamt(5),
@@ -190,7 +226,7 @@ wire ex_mem_unsigned;
 wire [3:0] ex_md_op;
 pipeline_register #(.WIDTH(154)) id_ex(
     .clk(clk), .reset(reset), .enable(id_ex_enable), .flush(id_ex_flush),
-    .valid_in(id_valid && !stall && !stop),   // stalled or halted: a bubble
+    .valid_in(id_valid && !stall && !stop && fetch_ready),   // stalled, halted or waiting for a fetch: a bubble
     .data_in({id_pc, ex_a_in, ex_b_in, id_imm, ex_dest_in, id_instruction[10:6], id_alu_ctl,
               alu_src, reg_write, mem_read, mem_write, mem_to_reg,
               mem_size, mem_unsigned, md_op}),
@@ -210,7 +246,8 @@ wire [31:0] ex_address = ex_a + ex_imm;
 // and not dropped by an older load/store halting in MEM this cycle.
 wire [31:0] hi, lo;
 wire md_running;
-mult_div md(.clk(clk), .reset(reset), .en(ex_valid && !access_fault), .op(ex_md_op),
+// CPU-9: not while mem_stall holds EX (the op would start again on every edge).
+mult_div md(.clk(clk), .reset(reset), .en(ex_valid && !access_fault && !mem_stall), .op(ex_md_op),
     .a(ex_a), .b(ex_b), .hi(hi), .lo(lo), .busy(md_running));
 // A div in EX makes the divider busy from the next cycle, so the instruction in ID
 // (which would reach EX then) already has to wait.
@@ -277,7 +314,7 @@ assign mem_we = mem_valid && mem_write_ctl && !access_fault && !reset;
 // Selecting memory/ALU data before this register avoids retaining unused data.
 pipeline_register #(.WIDTH(38)) mem_wb(
     .clk(clk), .reset(reset), .enable(mem_wb_enable), .flush(mem_wb_flush),
-    .valid_in(mem_valid && !access_fault),
+    .valid_in(mem_valid && !access_fault && !mem_stall),   // CPU-9: waiting = a bubble into WB
     .data_in({mem_to_reg_ctl ? load_value : mem_value, mem_dest, mem_reg_write}),
     .valid_out(wb_valid), .data_out({wb_data, wb_dest, wb_reg_write})
 );

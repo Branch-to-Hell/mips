@@ -31,7 +31,7 @@ reg [31:0] data [0:4095];
 
 mips_pipeline dut(.clk(clk), .reset(reset), .mem_addr(mem_addr), .mem_wdata(mem_wdata),
     .mem_be(mem_be), .mem_we(mem_we), .mem_re(mem_re), .mem_rdata(mem_rdata),
-    .dbg_sel(5'd0), .dbg_value(), .mem_fault(mem_fault), .halted(halted),
+    .dbg_sel(5'd0), .dbg_value(), .mem_fault(mem_fault), .mem_stall(1'b0), .ifetch_addr(), .ifetch_req(), .ifetch_data(32'd0), .ifetch_ready(1'b0), .halted(halted),
     .halt_cause(halt_cause), .halt_pc(halt_pc), .halt_addr(halt_addr));
 always #5 clk = ~clk;
 

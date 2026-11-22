@@ -7,6 +7,13 @@
 //                        banks and <prefix>_data_b0..b3.hex (if they exist) into the data memory
 //   +max-cycles=<N>      stop after N clock cycles (default 10,000,000)
 //   +ppm=<file>          at the end, save framebuffer A (128x96) as a PPM image
+//   CPU-9 (the trace must not change):
+//   +stall=<P>           raise mem_stall in P% of the cycles, at random (default 0)
+//   +fetch_delay=<N>     external fetches (mips_sim_ext) take 1 to N+1 cycles, at random (default 0)
+//   +seed=<S>            seed for both (default 1)
+// mips_sim_ext (EXT_START = 1) starts at 0x2000_0000 and fetches every instruction through the
+// CPU's external fetch port, from <prefix>.hex in a memory of the harness: assemble the program
+// with --text-base 0x20000000.
 //
 // Trace, one line per register write, in program order (they happen in WB):
 //   PC=0x00000050 R2 <= 0x00000000
@@ -21,17 +28,48 @@
 //   HALT: reached +max-cycles N at PC=0x...  (steps=N)
 // steps = instructions that finished (nops too, bubbles not), the same count as ref_sim.py.
 // Cycles go to stderr, so stdout is only the trace.
-module harness_top (
+module harness_top #(
+    parameter EXT_START = 0   // 1 = mips_sim_ext: run from 0x2000_0000 through the external fetch port
+)(
     input clk,
     input reset,
     output logic done = 0   // the run ended; sim_main.cpp stops (no $finish: its message would go to stdout)
 );
 
-life_system #(.MODE_B(1), .DEBOUNCE_CYCLES(50)) sys (
+localparam [31:0] EXT_BASE = 32'h2000_0000;
+localparam EXT_WORDS = 65536;             // 256 KB of external text for the tests
+
+logic ext_stall = 0;
+logic [31:0] ifetch_addr, ifetch_data;
+logic ifetch_req, ifetch_ready;
+
+life_system #(.MODE_B(1), .DEBOUNCE_CYCLES(50), .EXT_BUS(1),
+              .RESET_PC(EXT_START ? EXT_BASE : 32'h0)) sys (
     .clk(clk), .reset(reset), .SW(10'd0), .KEY(2'b11), .LEDR(),
     .HEX0(), .HEX1(), .HEX2(), .HEX3(), .HEX4(), .HEX5(),
-    .VGA_R(), .VGA_G(), .VGA_B(), .VGA_HS(), .VGA_VS()
+    .VGA_R(), .VGA_G(), .VGA_B(), .VGA_HS(), .VGA_VS(),
+    .bus_addr(), .bus_wdata(), .bus_we(), .bus_re(), .bus_be(), .ext_sel(),
+    .ext_rdata(32'd0), .ext_stall(ext_stall),
+    .ifetch_addr(ifetch_addr), .ifetch_req(ifetch_req),
+    .ifetch_data(ifetch_data), .ifetch_ready(ifetch_ready)
 );
+
+// ---- CPU-9: random waits ----
+int stall_pct = 0, fetch_delay = 0, seed = 1;
+logic [31:0] ext_text [0:EXT_WORDS-1];
+logic [31:0] fetch_last = 32'hFFFF_FFFF;
+int fetch_count = 0;
+// Ready once the address has stayed the same for its random delay; stays ready while it does
+assign ifetch_ready = ifetch_req && ifetch_addr == fetch_last && fetch_count == 0;
+assign ifetch_data = ext_text[ifetch_addr[17:2]];
+always @(posedge clk) begin
+    ext_stall <= stall_pct > 0 && ($urandom % 100) < stall_pct;
+    if (!ifetch_req || ifetch_addr != fetch_last) begin
+        fetch_last <= ifetch_req ? ifetch_addr : 32'hFFFF_FFFF;
+        fetch_count <= fetch_delay > 0 ? $urandom % (fetch_delay + 1) : 0;
+    end else if (fetch_count > 0)
+        fetch_count <= fetch_count - 1;
+end
 
 // ---- loading: once, on the first clock edge in reset ----
 // (not in an initial block: data_memory's own initial zeroes its RAM, and the order of
@@ -46,6 +84,10 @@ initial begin
         $fatal(1, "Usage: mips_sim +program=mem/<name> [+max-cycles=N] [+ppm=file.ppm]");
     void'($value$plusargs("max-cycles=%d", max_cycles));
     if (!$value$plusargs("ppm=%s", ppm_file)) ppm_file = "";
+    void'($value$plusargs("stall=%d", stall_pct));
+    void'($value$plusargs("fetch_delay=%d", fetch_delay));
+    void'($value$plusargs("seed=%d", seed));
+    void'($urandom(seed));
 end
 
 task automatic load_banks();
@@ -56,6 +98,10 @@ task automatic load_banks();
     $readmemh({program_prefix, "_b1.hex"}, sys.cpu.if_id.im.bank1);
     $readmemh({program_prefix, "_b2.hex"}, sys.cpu.if_id.im.bank2);
     $readmemh({program_prefix, "_b3.hex"}, sys.cpu.if_id.im.bank3);
+    if (EXT_START) begin
+        for (i = 0; i < EXT_WORDS; i = i + 1) ext_text[i] = 32'd0;
+        $readmemh({program_prefix, ".hex"}, ext_text);
+    end
     fd = $fopen({program_prefix, "_data_b0.hex"}, "r");
     if (fd != 0) begin
         $fclose(fd);
@@ -85,9 +131,10 @@ wire        wb_write = sys.cpu.wb_write;        // valid, RegWrite, not $zero
 wire [4:0]  wb_dest  = sys.cpu.wb_dest;
 wire [31:0] wb_data  = sys.cpu.wb_data;
 
-// A branch/jump in ID that really redirects (not stalled, so its operands are current)
-// to its own address: the program's "end: j end". ref_sim.py stops after its delay slot.
-wire self_jump = sys.cpu.id_valid && sys.cpu.redirect && !sys.cpu.stall && !sys.cpu.stop &&
+// A branch/jump in ID that really redirects (IF/ID advances: not stalled, so its operands
+// are current, and its delay slot is fetched) to its own address: the program's "end: j end".
+// ref_sim.py stops after its delay slot.
+wire self_jump = sys.cpu.id_valid && sys.cpu.redirect && sys.cpu.if_id_enable &&
                  sys.cpu.redirect_pc == sys.cpu.id_pc;
 
 longint cycles = 0, steps = 0;
@@ -195,17 +242,22 @@ always @(posedge clk) if (!reset && !done) begin
     flush();
     if (end_pending && hole() < 0) finish_now();
 
-    // Move the HI/LO trackers along with EX/MEM and MEM/WB (both always enabled)
-    md_wb = md_mem;
-    md_wb.valid = md_mem.valid && !sys.cpu.access_fault;
-    if (md_mem.valid) begin                 // in MEM now: HI/LO already hold its result
-        md_wb.hi = sys.cpu.hi;
-        md_wb.lo = sys.cpu.lo;
+    // Move the HI/LO trackers along with EX/MEM and MEM/WB. CPU-9: while mem_stall holds,
+    // EX/MEM keeps its instruction and WB gets a bubble.
+    if (sys.cpu.mem_stall) begin
+        md_wb.valid = 0;
+    end else begin
+        md_wb = md_mem;
+        md_wb.valid = md_mem.valid && !sys.cpu.access_fault;
+        if (md_mem.valid) begin             // in MEM now: HI/LO already hold its result
+            md_wb.hi = sys.cpu.hi;
+            md_wb.lo = sys.cpu.lo;
+        end
+        md_mem.valid = sys.cpu.ex_valid && !sys.cpu.access_fault && writes_hilo(sys.cpu.ex_md_op);
+        md_mem.op = sys.cpu.ex_md_op;
+        md_mem.pc = sys.cpu.ex_pc;
+        md_mem.div_by_zero = sys.cpu.ex_b == 32'd0;
     end
-    md_mem.valid = sys.cpu.ex_valid && !sys.cpu.access_fault && writes_hilo(sys.cpu.ex_md_op);
-    md_mem.op = sys.cpu.ex_md_op;
-    md_mem.pc = sys.cpu.ex_pc;
-    md_mem.div_by_zero = sys.cpu.ex_b == 32'd0;
 
     // End 1: the self-jump, then its delay slot, finished
     if (end_state == 0 && self_jump) begin
@@ -217,10 +269,11 @@ always @(posedge clk) if (!reset && !done) begin
         finish($sformatf("jumps to itself at 0x%s", hex8(end_pc)));
     end
 
-    // End 2: CPU-14 halt. Older instructions still finish (up to 3 in EX, MEM, WB)
-    if (sys.halted) begin
+    // End 2: CPU-14 halt. Older instructions still finish: wait until EX, MEM and WB are
+    // empty (CPU-9: mem_stall can make that take longer than 3 cycles)
+    if (sys.halted && !sys.cpu.ex_valid && !sys.cpu.mem_valid && !wb_valid) begin
         drain = drain + 1;
-        if (drain == 3)
+        if (drain == 1)
             finish($sformatf("cause %0d (%s) pc 0x%s addr 0x%s", sys.halt_cause,
                    sys.halt_cause == 1 ? "fetch" : sys.halt_cause == 2 ? "load" : "store",
                    hex8(sys.halt_pc), hex8(sys.halt_addr)));

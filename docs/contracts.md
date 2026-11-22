@@ -46,7 +46,7 @@ Pseudo-instructions handled by our assembler: `li la move nop`.
   - `jal` writes **`PC + 8`** into `$ra` (the instruction after the delay slot), and so do `jalr` (into `rd`) and `bltzal/bgezal`. The single-cycle `mips_cpu` has no delay slot and writes `PC + 4`.
 - An instruction in WB is visible to the instruction in ID **in the same cycle**. The register file is shared with the single-cycle CPU and writes on `posedge` (end of WB), so `mips_pipeline` adds a write-through bypass from WB to the ID read ports (never for `$zero`). It behaves like "write in the first half, read in the second".
 - **LIFE-6:** `life_system` (so `top_life` and `top_video_b_test`) runs `mips_pipeline`. The single-cycle `mips_cpu` stays in the repo for its own testbenches and `top_mmio_test`; the board fallback is the single-cycle `.sof` saved before the switch.
-- **Memory stall input:** the whole pipeline freezes while a memory access isn't ready (needed for SDRAM).
+- **Waiting for memory (CPU-9):** the pipeline freezes while a load/store isn't done, and IF waits for an instruction from the SDRAM (see "Waiting for memory").
 
 ### Delay-slot rule for assembly programs
 Programs written for MARS (with *Delayed branching* **off**) assume no delay slot. **Our assembler inserts a `nop` after every branch and jump**, so those programs run unchanged. No other NOPs are needed: the hazard unit handles dependencies.
@@ -74,7 +74,7 @@ Common rules (`pipeline_register.v`, `if_id_register.v`):
 
 HI and LO are not pipeline registers: they live in `mult_div` (EX) and are written only by an instruction that completes (valid, not dropped by a halt).
 
-CPU-5 turns off the IF/ID enable and sends a bubble into ID/EX on a stall, CPU-6 redirects the fetch PC (no flush: the delay slot runs), and CPU-9 will turn off every enable while memory isn't ready. The other enables are 1 and no register is flushed.
+CPU-5 turns off the IF/ID enable and sends a bubble into ID/EX on a stall, CPU-6 redirects the fetch PC (no flush: the delay slot runs), and CPU-9 turns off the enables of fetch, IF/ID, ID/EX and EX/MEM while `mem_stall` = 1 (MEM/WB gets a bubble), and holds IF/ID while a fetch isn't ready (ID/EX gets a bubble). No register is flushed.
 
 ## Halt on invalid access (CPU-14)
 The CPU stops in a **visible** way, and the failing instruction writes **nothing** (no register, no memory), when:
@@ -111,7 +111,7 @@ The hardware doesn't implement the whole 4 GB. The address decoder looks at the 
 | MMIO | `0xFFFF_0010` – `0xFFFF_0027` | 6 registers | See below. `0xFFFF_0000`–`0xFFFF_000C` are left free for MARS's keyboard/display simulator |
 | Framebuffer mode B | `0x1005_0000` – `0x1005_F9FF` | 62.5 KB (320×200 bytes) | Doom only (PLT-6). One byte per pixel, 4 pixels per word, big-endian |
 | Palette mode B | `0x1005_FC00` – `0x1005_FFFF` | 256 words | Entry *i* at `0x1005_FC00 + 4i`, `0x00RRGGBB` (PLT-6) |
-| SDRAM (phase 2) | defined in Sprint 2 | 64 MB | Doom code, data, heap and WAD |
+| SDRAM | `0x2000_0000` – `0x23FF_FFFF` | 64 MB | `top_doom` only: Doom's code, data, heap and the WAD. Decoded with `mem_addr[31:26] == 6'b001000`. See "Doom memory" |
 
 ### CPU memory bus
 The CPU has no memory inside except the instruction memory. Loads and stores go out through this bus, and the top level (`life_system`, PLT-3) sends each access to data, stack, framebuffer or MMIO by looking at the address. The same address decoder drives `mem_fault` (CPU-14): an address in no region of the memory map halts the CPU. While halted, `life_system` shows the error code: LEDR9 = halted, LEDR1-0 = cause, HEX = `E`, cause, bad address bits 15..0 (SW8 up: PC bits 23..0). SW9 still picks the register debug view. Checked in `verif/halt_tb.v`.
@@ -127,7 +127,11 @@ The CPU has no memory inside except the instruction memory. Loads and stores go 
 | `mem_fault` | in | 1 = `mem_addr` isn't in any region. It must depend only on `mem_addr` (not on `mem_re`/`mem_we`). The CPU checks alignment itself and halts with no writes (CPU-14) |
 | `halted`, `halt_cause[1:0]`, `halt_pc[31:0]`, `halt_addr[31:0]` | out | The CPU is stopped by a halt, why, where and which address (see "Halt on invalid access"); the top level shows the error code |
 
-Phase 2 adds a `mem_stall` input here (CPU-9).
+**Waiting for memory (CPU-9).** The SDRAM answers in several cycles, so the CPU can wait in two places:
+- `mem_stall` (in): the load/store in MEM is not done this cycle. Fetch, IF/ID, ID/EX and EX/MEM hold, so `mem_addr`, `mem_wdata`, `mem_be`, `mem_re` and `mem_we` stay the same; MEM/WB gets a bubble (the instruction already in WB writes once). The read data is taken on the edge where `mem_stall` = 0. HI/LO don't start an operation while it is 1. On-chip devices never raise it.
+- **Fetch wait** (`mips_pipeline` parameter `EXT_TEXT` = 1): a PC in the external text region (`EXT_TEXT_BASE` = `0x2000_0000`, 2^`EXT_TEXT_BITS` = 64 MB) is fetched through `ifetch_addr`/`ifetch_req` → `ifetch_data`/`ifetch_ready`, the instruction cache's port (PLT-12). IF/ID takes the word on the edge where `ifetch_ready` = 1, and it must stay valid while `ifetch_addr` doesn't change (a hit does). Until then IF and ID hold and ID/EX gets bubbles, like a hazard stall, so a branch stays in ID until its delay slot is fetched. The CPU-14 fetch check accepts both text regions: the 16 KB on chip (`TEXT_BASE`) and the external one. `RESET_PC` (default `TEXT_BASE`) is the first fetch.
+- **`life_system`** with `EXT_BUS` = 1 decodes the SDRAM region (`ext_sel`, no fault) and has the ports for the external side: the CPU's bus (`bus_*`), `ext_rdata` (OR'd into the read bus, 0 unless answering), `ext_stall` (→ `mem_stall`) and the fetch port. With `EXT_BUS` = 0 (`top_life`, `top_program`) the region faults and nothing ever waits.
+- Tested in Verilator with random waits: `make -C verif/verilator compare PROG=<name> STALL=<percent>` and `compare-ext` (the program runs from `0x2000_0000`, every fetch through the port, `FETCH=<max delay>`); see `verif/verilator/README.md`.
 
 **Devices and `mem_be`** (wired in `life_system`):
 - `data_memory` (data and stack): 4 byte-lane banks like the instruction memory, one write enable per byte (`ByteEnable` port). Word stores must still be aligned there (the single-cycle `mips_cpu` relies on it to ignore a misaligned `sw`).
@@ -192,9 +196,28 @@ Both are dual-port RAMs: the CPU writes, the VGA reads.
 ## WAD loading (PLT-10)
 - **Hardware:** `sdram_sys` has a second master on the SDRAM, a **JTAG to Avalon Master** (`jtag`, no ports at the top level). Platform Designer arbitrates it with the CPU bridge, so the PC can read and write the SDRAM over the USB-Blaster while the design runs. Any top level with `sdram_sys` gets it (today `sdram_test`, later `top_doom`).
 - **Script:** `src/tools/wad_load.tcl` (System Console) writes a file into the SDRAM, reads it back and compares it: `system-console -cli --script=src/tools/wad_load.tcl <file> [offset]` prints `PASS: the SDRAM holds the file byte-exact`. Inside System Console: `source src/tools/wad_load.tcl`, then `wad_load <file> [offset]` or `wad_verify <file> [offset]` (read back only).
-- **Where:** byte *i* of the file goes to SDRAM byte offset `offset + i`. Default offset `0x0300_0000` (the top 16 MB of the SDRAM; Doom's code, data and heap use the lower 48 MB). Provisional until the SDRAM region gets its CPU address in the memory map; then the WAD is at `SDRAM base + 0x0300_0000`.
+- **Where:** byte *i* of the file goes to SDRAM byte offset `offset + i`. Default offset `0x0300_0000` (the top 16 MB of the SDRAM; Doom's code, data and heap use the lower 48 MB). The CPU sees it at `0x2300_0000` (SDRAM base `0x2000_0000` + offset, see "Doom memory").
 - **Byte order:** the JTAG master writes Avalon byte lanes (byte address A+k = `byteenable[k]`), and the CPU bridge swaps the bytes of each word (see SDRAM above), so the CPU sees the file in order: `lb` at offset + *i* = file byte *i*, and `lw` = 4 file bytes, most significant first (big-endian, like the WAD read by `-EB` code).
 - **`sdram_test`:** the smoke test writes all 64 MB after reset and on KEY0, so **SW9 = 1** (LEDR8 on) keeps it from starting; set it before loading. The file is lost on power-off, and a KEY1 reset holds the controller in reset (no refresh while the key is down), so after a reset run `wad_verify` or load again.
+
+## Doom memory (`top_doom`, PLT-11)
+Doom's code doesn't fit on chip: built with our flags it is 367 KB of code and constants, 60 KB of `.data` and 243 KB of `.bss`, and it needs a 6 MiB zone heap and the 4 MB WAD, while the whole FPGA has ~182 KB of M9K (mode B takes 64 KB). So Doom runs from the SDRAM, through an instruction cache. The level 1 regions don't change.
+
+| Where | Address | What |
+|---|---|---|
+| On-chip text | `0x0000_0000` | Boot code (`src/doom/boot.S`): waits for KEY0, so the image and the WAD can be loaded over JTAG first, then `jr` to `0x2000_0000` |
+| SDRAM + `0x0000_0000` | `0x2000_0000` | The Doom image: `.text`, `.rodata`, `.data` (loaded over JTAG like the WAD), then `.bss` (zeroed by Doom's `crt0`) |
+| SDRAM, after `.bss` | up to `0x22FF_FFFF` | Heap (`sbrk`/`malloc`): the zone and the rest, ~47 MB. `_heap_end` = `0x2300_0000` |
+| SDRAM + `0x0300_0000` | `0x2300_0000` – `0x23FF_FFFF` | The WAD (16 MB, `wad_load.tcl`'s default offset) |
+| On-chip data region | `0x1001_0000` – `0x1001_3FFF` | Doom's **stack**, top `0x1001_3FF0`: 1-cycle access instead of ~7. An overflow goes below `0x1001_0000`, outside every region, and halts visibly (CPU-14) |
+
+- The SDRAM is one 256 MB region for `j`/`jal` (`PC[31:28] = 2`), so they reach any Doom function; only the boot code needs `jr`.
+- **Instruction cache (PLT-12):** direct-mapped, 8 KB, 16-byte lines (4 words), read-only (code is never written). A miss reads the line's 4 words from the SDRAM.
+- **Bridge (PLT-8):** loads and stores to the SDRAM region go to `sdram_sys` (see "SDRAM") and raise `mem_stall` until done, ~6-7 cycles per access. No data cache.
+- **Arbiter:** the bridge and the instruction cache share the SDRAM port, one access at a time. The JTAG master (PLT-10) is arbitrated by Platform Designer.
+- **Reset:** in `top_doom`, KEY1 resets the CPU only, never the SDRAM controller: resetting the controller stops the refresh and the SDRAM loses the image and the WAD.
+- **Doom's software:** linker script `src/doom/link_sdram.ld` (everything from `0x2000_0000`), its own `crt0` (`$sp` = `0x1001_3FF0`, zero `.bss`, call `main`). `elf2hex.py` writes the image as one binary from `0x2000_0000` (for `wad_load.tcl`, offset 0) and as a `.hex` for the simulation.
+- **Simulation (DOOM-6):** the Verilator harness has a behavioural SDRAM behind the same Avalon interface, preloaded with the image and the WAD, answering with random delays (also the test of CPU-9). It skips the KEY0 wait.
 
 ## Reference simulator trace (TC-6)
 `src/tools/ref_sim.py` runs an assembler image (`<name>.hex` + `<name>_data.hex`) and prints one line per register write, in program order. The Verilator harness (TC-7) prints **the same format**, HI/LO lines included, so the two traces compare with a plain `diff` (TC-11).
@@ -220,6 +243,7 @@ HALT: jumps to itself at 0x00000034  (steps=15)
 - **Quartus (MAX 10):** configuration mode *"Single Uncompressed Image with Memory Initialization"* (required to initialize on-chip memory from the `.hex` images).
 - **Instruction RAM:** enable *In-System Memory Content Editor* on the 4 banks to load programs without recompiling.
 - **GCC:** `mips-linux-gnu-gcc` (package `gcc-mips-linux-gnu` in WSL) with `-march=mips1 -msoft-float -mno-abicalls -G0 -EB` (**big-endian**, TC-14). Startup code, linker script and ELF → `.hex`: `src/c/` (TC-9, see its README). Constants (`.rodata`) go to the data region: the instruction memory can't be read by loads.
+- **Doom build:** also `-mmemcpy` and `PACKEDATTR` defined empty in `doomtype.h`. Without them GCC emits 48 `lwl`/`lwr`/`swl`/`swr` for the packed WAD structures, which our CPU doesn't have; with them, none. The structures keep the same layout (every `sizeof` and offset checked: they only hold `short`/`int`/`char` at natural offsets).
 - **Assembler:** text base `0x00000000` by default; `--text-base 0x00400000` only to compare with MARS dumps.
 - **GNU as test programs (CPU-7, CPU-8):** `src/programs/*.s` with `.set noreorder` (every delay slot written by hand, like GCC output). `src/tools/gas_image.sh <file.s>` (WSL) assembles one with `mips-linux-gnu-as -EB -march=mips1` and writes the word image `mem/<name>.hex`. The real assembler is also an independent check of our encodings. Use `div $zero, rs, rt` (3 operands): the 2-operand `div` is a GNU as macro with a zero check.
 - **Website:** [Astro Starlight](https://starlight.astro.build) in `web/`. One Markdown page per topic in `web/src/content/docs/`; the sidebar is set in `web/astro.config.mjs`. Run `npm run build` from `web/` before opening a PR (it must pass). Vercel deploys with **Root Directory = `web`**: production from `main`, a preview URL for each PR.

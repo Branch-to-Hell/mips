@@ -6,6 +6,7 @@ Runs a program on `life_system` (the same hardware as the board: `mips_pipeline`
 |---|---|
 | `harness_top.sv` | Wraps `life_system`, loads the program from `+program=`, prints one line per register write in WB and decides when the run ends |
 | `sim_main.cpp` | Clock (25 MHz) and reset (4 cycles), until `harness_top` sets `done` |
+| `mips_sim_ext` | The same harness built with `EXT_START=1`: it starts at `0x2000_0000` and fetches through the external port (CPU-9) |
 | `Makefile` | Builds the simulator (default target), `run` and `compare` |
 
 ## Install and build
@@ -48,6 +49,21 @@ HALT: jumps to itself at 0x00000040  (steps=87028)
   - **`+max-cycles`**: `HALT: reached +max-cycles N at PC=...` (`ref_sim.py` counts instructions, so this line differs).
 - `steps` = instructions that finished (nops too, stall bubbles not): the same number `ref_sim.py` prints.
 - **HI/LO (CPU-8):** `mult multu div divu` print `HI` then `LO`, `mthi`/`mtlo` one line, in the instruction's place (when it reaches WB). A divide finishes 32 cycles later while the pipeline keeps going, so its lines, and every line after them, wait in a queue until the divider is done. Divide by zero prints nothing, like `ref_sim.py`.
+
+## CPU-9: random waits
+
+The trace must not change when the CPU waits for memory, so the same comparisons run with random waits:
+
+```
+make -C verif/verilator compare PROG=test_libc STALL=30 SEED=7       # mem_stall in 30% of the cycles
+make -C verif/verilator compare-ext PROG=tc4_rtype FETCH=6 STALL=20  # fetch every instruction from 0x2000_0000
+```
+
+- `STALL=<P>` raises `mem_stall` in P% of the cycles at random, with or without a load/store in MEM (`+stall=P`).
+- `compare-ext` assembles `src/programs/<PROG>.asm` with `--text-base 0x20000000` into `build/verilator/ext/` and runs it on `mips_sim_ext`, which starts at `0x2000_0000`: every instruction comes through the CPU's external fetch port from a memory in the harness, each new address after 1 to `FETCH`+1 cycles (`+fetch_delay=N`). `ref_sim.py` runs the same image with `--text-base 0x20000000`.
+- `SEED=<S>` makes a run repeatable (`+seed=S`).
+
+Checked on Nov 22: `compare` with STALL 10/30/60 for `tc4_rtype tc4_memory tc5_load_use tc5_branch_hazards tc5_jump_hazards count_value_in1 test_stack test_halt hello_pixels test_libc test_bus`, and `compare-ext` with FETCH 0/3/6 (and STALL 30) for every `tc4_*`, `tc5_*`, `count_value_in1/2`, `test_stack`, `test_pseudo`, `test_halt`: all the same trace. `test_libc` takes 122k cycles without waits and 301k with STALL=60, for the same 79,400 instructions.
 
 ## What is checked (Nov 22)
 

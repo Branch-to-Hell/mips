@@ -13,7 +13,7 @@ always #5 clk=~clk;
 pipeline_register #(.WIDTH(115)) id_ex(clk,reset,enable,flush,valid_in,data_in,id_ex_valid,id_ex_data);
 pipeline_register #(.WIDTH(73)) ex_mem(clk,reset,enable,flush,valid_in,data_in[72:0],ex_mem_valid,ex_mem_data);
 pipeline_register #(.WIDTH(38)) mem_wb(clk,reset,enable,flush,valid_in,data_in[37:0],mem_wb_valid,mem_wb_data);
-if_id_register if_id(clk,reset,enable,flush,fetch_pc,id_pc,instruction,if_valid);
+if_id_register if_id(clk,reset,enable,flush,fetch_pc,id_pc,instruction,if_valid,1'b0,32'd0);
 
 task tick;
 begin @(posedge clk); #1; end
