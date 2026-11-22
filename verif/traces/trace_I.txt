@@ -1,0 +1,24 @@
+TC-16 trace, I lw: PC 00000020, word 8e2b0004
+Program src/programs/tc16_trace.asm on mips_pipeline (verif/trace_tb.v, do trace.do).
+Each block is one clock cycle; values are the state during the cycle (sampled at the edge that ends it).
+
+Before: $s1 = 10010000  $t3 = ffffffff  mem[0x10010004] = cafe1234
+
+Cycle 1  IF   PC = 00000020 -> bytes mem[PC..PC+3] = 8e 2b 00 04 -> word 8e2b0004 (loaded into IF/ID at the end of the cycle)
+Cycle 2  ID   IF/ID: valid = 1, PC = 00000020, instruction = 8e2b0004
+               fields I: opcode = 100011, rs = 17 ($s1), rt = 11 ($t3), immediate = 0004 -> extended 00000004
+               control: RegDst = 0, ALUSrc = 1, MemtoReg = 1, RegWrite = 1, MemRead = 1, MemWrite = 0,
+                        Branch = 0, BranchNE = 0, Jump = 0, JumpReg = 0, Link = 0, ALUOp = 00, ALU control = 0010
+               register file: A = R[rs] = 10010000, B = R[rt] = ffffffff, destination = 11 ($t3)
+               hazard unit: stall = 0; redirect = 0
+               fetch: IF fetches 00000024 this cycle, then 00000028
+Cycle 3  EX   ID/EX: valid = 1, PC = 00000020, A = 10010000, B = ffffffff, immediate = 00000004, destination = 11 ($t3), shamt = 0,
+                      ALU control = 0010, ALUSrc = 1, RegWrite = 1, MemRead = 1, MemWrite = 0, MemtoReg = 1
+               ALU: 10010000 op 00000004 = 10010004; address adder A + immediate = 10010004; value to EX/MEM = 10010004
+Cycle 4  MEM  EX/MEM: valid = 1, PC = 00000020, value = 10010004, store data = ffffffff, destination = 11 ($t3),
+                       RegWrite = 1, MemRead = 1, MemWrite = 0, MemtoReg = 1
+               memory bus: address = 10010004, read = 1, write = 0, read data = cafe1234 -> value to MEM/WB = cafe1234
+Cycle 5  WB   MEM/WB: valid = 1, value = cafe1234, destination = 11 ($t3), RegWrite = 1
+               register file: $t3 <= cafe1234 at the end of the cycle (bypassed to ID during it)
+
+After : $s1 = 10010000  $t3 = cafe1234  mem[0x10010004] = cafe1234

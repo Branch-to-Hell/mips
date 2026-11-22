@@ -43,7 +43,7 @@ loop forever                   # observable end point (self-jump)
 Plus `lui` (extension, documented) only to build the data address 0x10010000.
 
 ## Three inputs
-Programs in `sw/programs/`. "Observed" is our pipelined CPU (`life_system`, the same hardware as the board), from `hw/sim/tc15.do`; MARS gives the same values.
+Programs in `src/programs/`. "Observed" is our pipelined CPU (`life_system`, the same hardware as the board), from `verif/tc15.do`; MARS gives the same values.
 
 | # | File | n | target | array | Expected result | Observed (our CPU) |
 |---|---|---|---|---|---|---|
@@ -54,12 +54,12 @@ Programs in `sw/programs/`. "Observed" is our pipelined CPU (`life_system`, the 
 ## How to reproduce
 **Assemble** (from the repo root), for k = 1, 2, 3:
 ```
-python sw/assembler/assembler.py sw/programs/count_value_in<k>.asm
+python src/assembler/assembler.py src/programs/count_value_in<k>.asm
 ```
-This writes `hw/mem/count_value_in<k>_b0..b3.hex` (code) and `hw/mem/count_value_in<k>_data.hex` (`.data`: n, target, result, array).
+This writes `mem/count_value_in<k>_b0..b3.hex` (code) and `mem/count_value_in<k>_data.hex` (`.data`: n, target, result, array).
 
-**Simulation (ModelSim):** from `hw/sim`, `do tc15.do`. It runs the 3 inputs on `life_system` and checks the result word, that n and target are unchanged, the self-jump, and the count on the HEX debug view.
+**Simulation (ModelSim):** from `verif`, `do tc15.do`. It runs the 3 inputs on `life_system` and checks the result word, that n and target are unchanged, the self-jump, and the count on the HEX debug view.
 
-**Board:** Quartus revision `program` (`hw/rtl/top_program.v`). In `hw/quartus/program.qsf` set `set_parameter -name PROGRAM "count_value_in<k>"` (and `WITH_DATA 1`), compile, program the board. The program ends in `j end` with the result stored. To see it: SW9 up and SW4-0 = 01011 (register 11, `$t3` = count), HEX3-0 = the count. A CPU halt would show `E` on HEX5 and LEDR9 on.
+**Board:** Quartus revision `program` (`rtl/top_program.v`). In `quartus/program.qsf` set `set_parameter -name PROGRAM "count_value_in<k>"` (and `WITH_DATA 1`), compile, program the board. The program ends in `j end` with the result stored. To see it: SW9 up and SW4-0 = 01011 (register 11, `$t3` = count), HEX3-0 = the count. A CPU halt would show `E` on HEX5 and LEDR9 on.
 
 **MARS:** open the file, Assemble (F3), Run, wait 2 seconds, Stop. In the Data Segment (`0x10010000 (.data)`), the third word (`+8`) is the result.
