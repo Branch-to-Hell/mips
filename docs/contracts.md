@@ -100,7 +100,7 @@ The hardware doesn't implement the whole 4 GB. The address decoder looks at the 
 | MMIO | `0xFFFF_0010` – `0xFFFF_0027` | 6 registers | See below. `0xFFFF_0000`–`0xFFFF_000C` are left free for MARS's keyboard/display simulator |
 | Framebuffer mode B | `0x1005_0000` – `0x1005_F9FF` | 62.5 KB (320×200 bytes) | Doom only (PLT-6). One byte per pixel, 4 pixels per word, big-endian |
 | Palette mode B | `0x1005_FC00` – `0x1005_FFFF` | 256 words | Entry *i* at `0x1005_FC00 + 4i`, `0x00RRGGBB` (PLT-6) |
-| SDRAM (phase 2) | defined in Sprint 2 | 64 MB | Doom code, data, heap and WAD |
+| SDRAM | `0x2000_0000` – `0x23FF_FFFF` | 64 MB | `top_doom` only: Doom's code, data, heap and the WAD. Decoded with `mem_addr[31:26] == 6'b001000`. See "Doom memory" |
 
 ### CPU memory bus
 The CPU has no memory inside except the instruction memory. Loads and stores go out through this bus, and the top level (`life_system`, PLT-3) sends each access to data, stack, framebuffer or MMIO by looking at the address. The same address decoder drives `mem_fault` (CPU-14): an address in no region of the memory map halts the CPU. While halted, `life_system` shows the error code: LEDR9 = halted, LEDR1-0 = cause, HEX = `E`, cause, bad address bits 15..0 (SW8 up: PC bits 23..0). SW9 still picks the register debug view. Checked in `verif/halt_tb.v`.
@@ -115,7 +115,9 @@ The CPU has no memory inside except the instruction memory. Loads and stores go 
 | `mem_fault` | in | 1 = `mem_addr` isn't in any region. It must depend only on `mem_addr` (not on `mem_re`/`mem_we`). The CPU checks alignment itself and halts with no writes (CPU-14) |
 | `halted`, `halt_cause[1:0]`, `halt_pc[31:0]`, `halt_addr[31:0]` | out | The CPU is stopped by a halt, why, where and which address (see "Halt on invalid access"); the top level shows the error code |
 
-Phase 2 adds a `mem_stall` input here (CPU-9).
+**Waiting for memory (CPU-9).** The SDRAM answers in several cycles, so the CPU can wait in two places:
+- `mem_stall` (in): the load/store in MEM is not done yet. The whole pipeline holds (every pipeline register keeps its payload and `valid`) until it drops. On-chip devices never raise it.
+- **Fetch wait:** when the PC is in the SDRAM region, the instruction comes from the instruction cache (PLT-12). On a miss, IF holds and ID gets bubbles until the line arrives, like a hazard stall. The CPU-14 fetch check accepts both text regions: the 16 KB on chip and the SDRAM.
 
 ### Instruction memory (CPU-12)
 The professor asks for **one byte per address** and big-endian fetch: the word is `mem[PC]`, `mem[PC+1]`, `mem[PC+2]`, `mem[PC+3]`, from the most significant byte to the least.
@@ -173,9 +175,28 @@ Both are dual-port RAMs: the CPU writes, the VGA reads.
 ## WAD loading (PLT-10)
 - **Hardware:** `sdram_sys` has a second master on the SDRAM, a **JTAG to Avalon Master** (`jtag`, no ports at the top level). Platform Designer arbitrates it with the CPU bridge, so the PC can read and write the SDRAM over the USB-Blaster while the design runs. Any top level with `sdram_sys` gets it (today `sdram_test`, later `top_doom`).
 - **Script:** `src/tools/wad_load.tcl` (System Console) writes a file into the SDRAM, reads it back and compares it: `system-console -cli --script=src/tools/wad_load.tcl <file> [offset]` prints `PASS: the SDRAM holds the file byte-exact`. Inside System Console: `source src/tools/wad_load.tcl`, then `wad_load <file> [offset]` or `wad_verify <file> [offset]` (read back only).
-- **Where:** byte *i* of the file goes to SDRAM byte offset `offset + i`. Default offset `0x0300_0000` (the top 16 MB of the SDRAM; Doom's code, data and heap use the lower 48 MB). Provisional until the SDRAM region gets its CPU address in the memory map; then the WAD is at `SDRAM base + 0x0300_0000`.
+- **Where:** byte *i* of the file goes to SDRAM byte offset `offset + i`. Default offset `0x0300_0000` (the top 16 MB of the SDRAM; Doom's code, data and heap use the lower 48 MB). The CPU sees it at `0x2300_0000` (SDRAM base `0x2000_0000` + offset, see "Doom memory").
 - **Byte order:** the JTAG master writes Avalon byte lanes (byte address A+k = `byteenable[k]`), and the CPU bridge swaps the bytes of each word (see SDRAM above), so the CPU sees the file in order: `lb` at offset + *i* = file byte *i*, and `lw` = 4 file bytes, most significant first (big-endian, like the WAD read by `-EB` code).
 - **`sdram_test`:** the smoke test writes all 64 MB after reset and on KEY0, so **SW9 = 1** (LEDR8 on) keeps it from starting; set it before loading. The file is lost on power-off, and a KEY1 reset holds the controller in reset (no refresh while the key is down), so after a reset run `wad_verify` or load again.
+
+## Doom memory (`top_doom`, PLT-11)
+Doom's code doesn't fit on chip: built with our flags it is 367 KB of code and constants, 60 KB of `.data` and 243 KB of `.bss`, and it needs a 6 MiB zone heap and the 4 MB WAD, while the whole FPGA has ~182 KB of M9K (mode B takes 64 KB). So Doom runs from the SDRAM, through an instruction cache. The level 1 regions don't change.
+
+| Where | Address | What |
+|---|---|---|
+| On-chip text | `0x0000_0000` | Boot code (`src/doom/boot.S`): waits for KEY0, so the image and the WAD can be loaded over JTAG first, then `jr` to `0x2000_0000` |
+| SDRAM + `0x0000_0000` | `0x2000_0000` | The Doom image: `.text`, `.rodata`, `.data` (loaded over JTAG like the WAD), then `.bss` (zeroed by Doom's `crt0`) |
+| SDRAM, after `.bss` | up to `0x22FF_FFFF` | Heap (`sbrk`/`malloc`): the zone and the rest, ~47 MB. `_heap_end` = `0x2300_0000` |
+| SDRAM + `0x0300_0000` | `0x2300_0000` – `0x23FF_FFFF` | The WAD (16 MB, `wad_load.tcl`'s default offset) |
+| On-chip data region | `0x1001_0000` – `0x1001_3FFF` | Doom's **stack**, top `0x1001_3FF0`: 1-cycle access instead of ~7. An overflow goes below `0x1001_0000`, outside every region, and halts visibly (CPU-14) |
+
+- The SDRAM is one 256 MB region for `j`/`jal` (`PC[31:28] = 2`), so they reach any Doom function; only the boot code needs `jr`.
+- **Instruction cache (PLT-12):** direct-mapped, 8 KB, 16-byte lines (4 words), read-only (code is never written). A miss reads the line's 4 words from the SDRAM.
+- **Bridge (PLT-8):** loads and stores to the SDRAM region go to `sdram_sys` (see "SDRAM") and raise `mem_stall` until done, ~6-7 cycles per access. No data cache.
+- **Arbiter:** the bridge and the instruction cache share the SDRAM port, one access at a time. The JTAG master (PLT-10) is arbitrated by Platform Designer.
+- **Reset:** in `top_doom`, KEY1 resets the CPU only, never the SDRAM controller: resetting the controller stops the refresh and the SDRAM loses the image and the WAD.
+- **Doom's software:** linker script `src/doom/link_sdram.ld` (everything from `0x2000_0000`), its own `crt0` (`$sp` = `0x1001_3FF0`, zero `.bss`, call `main`). `elf2hex.py` writes the image as one binary from `0x2000_0000` (for `wad_load.tcl`, offset 0) and as a `.hex` for the simulation.
+- **Simulation (DOOM-6):** the Verilator harness has a behavioural SDRAM behind the same Avalon interface, preloaded with the image and the WAD, answering with random delays (also the test of CPU-9). It skips the KEY0 wait.
 
 ## Reference simulator trace (TC-6)
 `src/tools/ref_sim.py` runs an assembler image (`<name>.hex` + `<name>_data.hex`) and prints one line per register write, in program order. The Verilator harness (TC-7) prints **the same format**, so the two traces compare with a plain `diff` (TC-11).
@@ -200,6 +221,7 @@ HALT: jumps to itself at 0x00000034  (steps=15)
 - **Quartus (MAX 10):** configuration mode *"Single Uncompressed Image with Memory Initialization"* (required to initialize on-chip memory from the `.hex` images).
 - **Instruction RAM:** enable *In-System Memory Content Editor* on the 4 banks to load programs without recompiling.
 - **GCC:** `mips-linux-gnu-gcc` (package `gcc-mips-linux-gnu` in WSL) with `-march=mips1 -msoft-float -mno-abicalls -G0 -EB` (**big-endian**, TC-14). Startup code, linker script and ELF → `.hex`: `src/c/` (TC-9, see its README). Constants (`.rodata`) go to the data region: the instruction memory can't be read by loads.
+- **Doom build:** also `-mmemcpy` and `PACKEDATTR` defined empty in `doomtype.h`. Without them GCC emits 48 `lwl`/`lwr`/`swl`/`swr` for the packed WAD structures, which our CPU doesn't have; with them, none. The structures keep the same layout (every `sizeof` and offset checked: they only hold `short`/`int`/`char` at natural offsets).
 - **Assembler:** text base `0x00000000` by default; `--text-base 0x00400000` only to compare with MARS dumps.
 - **Website:** [Astro Starlight](https://starlight.astro.build) in `web/`. One Markdown page per topic in `web/src/content/docs/`; the sidebar is set in `web/astro.config.mjs`. Run `npm run build` from `web/` before opening a PR (it must pass). Vercel deploys with **Root Directory = `web`**: production from `main`, a preview URL for each PR.
 
