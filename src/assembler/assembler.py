@@ -497,11 +497,16 @@ def write_hex(path, words):
 
 def main():
 
-    ap = argparse.ArgumentParser(description="Assembler MIPS -> HEX")
-    ap.add_argument("source",help="file .asm" )
-    ap.add_argument("-o","--outdir",help="output directory (default: mem)")
-    ap.add_argument("--list",action="store_true",help="show program assembly")
-    ap.add_argument("--text-base",default="0",help="text base address")
+    ap = argparse.ArgumentParser(
+        description="MIPS assembler: .asm -> the memory images our CPU loads (mem/<name>*.hex)",
+        epilog="example: python src/assembler/assembler.py src/programs/count_value_in1.asm\n"
+               "then put the program on the board with the 'program' revision (see README.md)",
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("source", help="the .asm file")
+    ap.add_argument("-o", "--outdir", help="output folder (default: mem/ at the repo root)")
+    ap.add_argument("--list", action="store_true", help="print the listing (address, word, source line) and the labels")
+    ap.add_argument("--text-base", default="0",
+                    help="address of the first instruction (default 0; 0x00400000 only to compare with a MARS dump)")
 
     args = ap.parse_args()
     global TEXT_BASE
@@ -518,8 +523,12 @@ def main():
     outdir = args.outdir or MEM_DIR
     base = os.path.splitext(os.path.basename(args.source))[0]
 
-    with open(args.source) as f:
-        lines = f.read().splitlines()
+    try:
+        with open(args.source) as f:
+            lines = f.read().splitlines()
+    except OSError as e:
+        print(f"Error: can't read {args.source}: {e.strerror}")
+        sys.exit(1)
 
     try:
         labels, text, data = first_pass(lines)
@@ -552,6 +561,11 @@ def main():
     print(f"\nOK: {len(words)} instructions, "
           f"{len(data)} data words")
     print( f"Files generated in: {outdir}")
+    if os.path.normpath(outdir) == MEM_DIR:
+        # The board loads mem/ at compile time: these two lines go in quartus/program.qsf
+        print("To run it on the board, put these lines in quartus/program.qsf and compile the 'program' revision:")
+        print(f'    set_parameter -name PROGRAM "{base}"')
+        print(f"    set_parameter -name WITH_DATA {1 if data else 0}")
 
 if __name__ == "__main__":
     main()
