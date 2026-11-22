@@ -79,11 +79,11 @@ initial begin
     wait_result;
 
     // 3. What the program left in memory
-    if (sys.stack.mem[0] !== 32'h111) fail("stack word 0x7FFFE000 is not 0x111");
+    if (sys.stack.word(0) !== 32'h111) fail("stack word 0x7FFFE000 is not 0x111");
     else $display("ok    stack word 0x7FFFE000 = 0x111");
-    if (sys.stack.mem[1023] !== 32'h222) fail("stack word 0x7FFFEFFC is not 0x222");
+    if (sys.stack.word(1023) !== 32'h222) fail("stack word 0x7FFFEFFC is not 0x222");
     else $display("ok    stack word 0x7FFFEFFC = 0x222");
-    if (sys.dm.mem[0] !== 32'h333) fail("data word 0x10010000 is not 0x333");
+    if (sys.dm.word(0) !== 32'h333) fail("data word 0x10010000 is not 0x333");
     else $display("ok    data word 0x10010000 = 0x333");
     if (sp !== SP_TOP) fail("$sp is not back at the top at the end");
 

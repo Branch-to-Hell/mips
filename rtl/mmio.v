@@ -7,6 +7,8 @@ Addresses from contracts.md:
     0xFFFF_0020  TIMER read   milliseconds since reset (32 bits, wraps after ~49 days)
     0xFFFF_0024  VIDEO_MODE write  bit 0: 0 = mode A, 1 = mode B (PLT-6; also readable)
 Reads and writes on negedge, like data memory (contracts.md, memory timing)
+CPU-7: a byte or half store (be != 1111) changes only its bytes of the register, and the
+register is picked by the word address, so sb to 0xFFFF_001F writes HEX bits 7..0
 */
 module mmio #(
     parameter DEBOUNCE_CYCLES = 250_000, // 10 ms at 25 MHz
@@ -19,6 +21,7 @@ module mmio #(
     input [31:0] addr,
     input [31:0] wdata,
     input we,
+    input [3:0] be,       // byte enables (CPU-7), [3] = bits 31..24; 4'b1111 for sw
     input re,
     output [31:0] rdata,  // 0 when the last access was not an MMIO read
 
@@ -70,22 +73,29 @@ reg [23:0] hex_reg = 0;
 reg video_mode_reg = 0;
 reg [31:0] q = 0;
 
+// The register picked by the word address; the new value keeps the bytes not written
+wire [31:0] word_addr = {addr[31:2], 2'b00};
+wire [31:0] lanes = {{8{be[3]}}, {8{be[2]}}, {8{be[1]}}, {8{be[0]}}};
+wire [31:0] ledr_next = ({22'b0, ledr_reg} & ~lanes) | (wdata & lanes);
+wire [31:0] hex_next = ({8'b0, hex_reg} & ~lanes) | (wdata & lanes);
+wire [31:0] video_mode_next = ({31'b0, video_mode_reg} & ~lanes) | (wdata & lanes);
+
 always @(negedge clk) begin
     if (reset) begin
         ledr_reg <= 0;
         hex_reg <= 0;
         video_mode_reg <= 0;
     end else if (we) begin
-        case (addr)
-            ADDR_LEDR: ledr_reg <= wdata[9:0];
-            ADDR_HEX:  hex_reg  <= wdata[23:0];
-            ADDR_VIDEO_MODE: video_mode_reg <= wdata[0];
+        case (word_addr)
+            ADDR_LEDR: ledr_reg <= ledr_next[9:0];
+            ADDR_HEX:  hex_reg  <= hex_next[23:0];
+            ADDR_VIDEO_MODE: video_mode_reg <= video_mode_next[0];
             default: ;
         endcase
     end
 
     if (re) begin
-        case (addr)
+        case (word_addr)
             ADDR_SW:   q <= {22'b0, sw_sync1};
             ADDR_KEY:  q <= {30'b0, key_pressed};
             ADDR_LEDR: q <= {22'b0, ledr_reg};

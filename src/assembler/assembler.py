@@ -77,7 +77,7 @@ def DecBinary(val,bits):
     val = val if val >= 0 else val + (1 << bits) #decimal->binary
     return format(val, f'0{bits}b')
 
-def write_banks(base_path, words):
+def write_banks(base_path, words, bytes_image=True):
 
     image = [
         (w >> shift) & 0xFF
@@ -90,7 +90,8 @@ def write_banks(base_path, words):
             for b in values:
                 f.write(f"{b:02x}\n")
 
-    write_bytes(base_path + "_bytes.hex", image)
+    if bytes_image:
+        write_bytes(base_path + "_bytes.hex", image)
 
     for k in range(4):
         write_bytes(
@@ -537,6 +538,8 @@ def main():
     write_banks(os.path.join(outdir, base), words) # _bytes, _b0 .. _b3
     if data:
         write_hex(os.path.join(outdir, base + "_data.hex"), data)
+        # CPU-7: data_memory has one bank per byte lane and loads <name>_data_b0..b3.hex
+        write_banks(os.path.join(outdir, base + "_data"), data, bytes_image=False)
 
     if args.list:
         print("\nProgram:\n")

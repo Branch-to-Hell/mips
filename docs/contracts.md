@@ -129,7 +129,12 @@ The CPU has no memory inside except the instruction memory. Loads and stores go 
 
 Phase 2 adds a `mem_stall` input here (CPU-9).
 
-**Devices and `mem_be`.** A device written by `sb`/`sh` must honour `mem_be`. `framebuffer_b` already does (its `fb_be` input). `data_memory` (data and stack), mode A and the MMIO are word-only for now: they write the whole word. They get `mem_be` when the pipeline is wired into a top level (LIFE-6 for the Game of Life, `top_doom` for C code). The Game of Life only uses `lw`/`sw`, so the frozen build doesn't need it.
+**Devices and `mem_be`** (wired in `life_system`):
+- `data_memory` (data and stack): 4 byte-lane banks like the instruction memory, one write enable per byte (`ByteEnable` port). Word stores must still be aligned there (the single-cycle `mips_cpu` relies on it to ignore a misaligned `sw`).
+- `framebuffer_b`: its `fb_be` input.
+- MMIO: a byte or half store changes only its bytes of the register, picked by the word address (`sb` to `0xFFFF_001F` = HEX bits 7..0).
+- **Framebuffer A and the palette take whole words only**: they keep 12 bits per word (4 per color), so a byte or half access there is a CPU-14 halt (cause 2 or 3), through `mem_fault`. `mem_fault` may look at `mem_be` because it depends only on the instruction in MEM, not on `mem_re`/`mem_we`. `ref_sim.py` halts the same way.
+- Tops and testbenches with the single-cycle CPU tie `ByteEnable`/`be` to `4'b1111`.
 
 ### Instruction memory (CPU-12)
 The professor asks for **one byte per address** and big-endian fetch: the word is `mem[PC]`, `mem[PC+1]`, `mem[PC+2]`, `mem[PC+3]`, from the most significant byte to the least.
@@ -139,9 +144,9 @@ The professor asks for **one byte per address** and big-endian fetch: the word i
   - `<name>_bytes.hex`: one byte per address, big-endian (the professor's loadable image).
   - `<name>_b0.hex` … `<name>_b3.hex`: bank *k* = the bytes at addresses with `addr[1:0] = k`; line *i* is the byte of instruction *i*.
   - `instruction_memory` loads the 4 bank files with `$readmemh` from the prefix in `IMEM_INIT` (e.g. `"../mem/life_board"`), in ModelSim and in Quartus.
-  - The assembler writes them from the ASM (TC-13), together with the word image `<name>.hex` and the data image `<name>_data.hex`. Everything goes to `mem/` by default (or to the folder given with `-o`), never to `src/programs/`. For a word `.hex` that does not come from our assembler (for example GNU as output), `src/tools/hex2banks.py` makes the same files.
+  - The assembler writes them from the ASM (TC-13), together with the word image `<name>.hex` and the data image `<name>_data.hex` (plus its 4 lanes `<name>_data_b0..b3.hex`, see `.data` below). Everything goes to `mem/` by default (or to the folder given with `-o`), never to `src/programs/`. For a word `.hex` that does not come from our assembler (for example GNU as output), `src/tools/hex2banks.py` makes the same files.
   - **No `.mif` files** for program images: `$readmemh` with `.hex` works the same in ModelSim and Quartus.
-  - **`.data` (TC-15):** `data_memory` loads `<name>_data.hex` (one word per line from `0x1001_0000`) through its `INIT_FILE` parameter, as the initial content of its RAM; the rest of the region starts at 0. `life_system` passes it as `DMEM_INIT`. `top_program` (Quartus revision `program`) runs any assembled program with its `.data`, picked in `program.qsf`, without touching the Game of Life build. The data is loaded at configuration time only: a reset does not restore it.
+  - **`.data` (TC-15, CPU-7):** `<name>_data.hex` has one word per line from `0x1001_0000` (what `ref_sim.py` reads). `data_memory` has one bank per byte lane, so it loads the same image split in 4 lanes, `<name>_data_b0..b3.hex` (one byte per line, lane *k* = bits `31-8k..24-8k`), from the prefix in its `INIT_FILE` parameter, as the initial content of its RAM; the rest of the region starts at 0. `life_system` passes the prefix as `DMEM_INIT` (e.g. `"../mem/count_value_in1_data"`). The assembler and `elf2hex.py` write the lanes; `hex2banks.py <name>_data.hex` makes them for any other word image. `top_program` (Quartus revision `program`) runs any assembled program with its `.data`, picked in `program.qsf`, without touching the Game of Life build. The data is loaded at configuration time only: a reset does not restore it.
 
 ### Memory timing
 All memories read on a clock edge, so Quartus can place them in M9K blocks (a combinational read doesn't fit: 16 KB of flip-flops is more than the whole FPGA).
@@ -192,7 +197,7 @@ Both are dual-port RAMs: the CPU writes, the VGA reads.
 - **`sdram_test`:** the smoke test writes all 64 MB after reset and on KEY0, so **SW9 = 1** (LEDR8 on) keeps it from starting; set it before loading. The file is lost on power-off, and a KEY1 reset holds the controller in reset (no refresh while the key is down), so after a reset run `wad_verify` or load again.
 
 ## Reference simulator trace (TC-6)
-`src/tools/ref_sim.py` runs an assembler image (`<name>.hex` + `<name>_data.hex`) and prints one line per register write, in program order. The Verilator harness (TC-7) prints **the same format**, so the two traces compare with a plain `diff` (TC-11).
+`src/tools/ref_sim.py` runs an assembler image (`<name>.hex` + `<name>_data.hex`) and prints one line per register write, in program order. The Verilator harness (TC-7) prints **the same format**, HI/LO lines included, so the two traces compare with a plain `diff` (TC-11).
 
 ```
 PC=0x00000000 R8 <= 0x00000005
@@ -202,17 +207,19 @@ HALT: jumps to itself at 0x00000034  (steps=15)
 ```
 
 - `PC` is the address of the instruction that writes, `R<n>` the register in decimal, values in 8 uppercase hex digits. Writes to `$zero` are not printed (a `nop` prints nothing).
-- `mult multu div divu` print `HI` then `LO`. `mthi` and `mtlo` print one line. `div`/`divu` by zero print nothing and leave HI/LO unchanged.
+- `mult multu div divu` print `HI` then `LO`. `mthi` and `mtlo` print one line. `div`/`divu` by zero print nothing and leave HI/LO unchanged in `ref_sim.py`; the hardware writes a meaningless value there (`mult_div.v`), so a program that divides by zero and then reads HI/LO differs (the harness prints nothing for it either).
+- `bltzal`/`bgezal` write `$ra` = PC + 8 even when not taken. `syscall`, `break` and unknown instructions write nothing, like the CPU.
 - Same state as `mips_pipeline` after reset: PC = text base, `$sp = 0x7FFF_EFFC`, every other register 0 (MARS also sets `$gp = 0x1000_8000`; the CPU does not).
 - Delay slot as in the pipeline: `jal`/`jalr` write PC + 8 and the instruction after a jump always runs.
 - Invalid fetch, load or store: the same halt as the CPU (cause 1/2/3, see "Halt on invalid access") with the memory map above, printed as `HALT: cause 2 (load) pc 0x... addr 0x...`. The failing instruction writes nothing.
 - The last line always starts with `HALT:` and says why the run ended. Drop it before comparing with the CPU trace.
+- **Verilator harness (TC-7):** `verif/verilator/` runs the image on `life_system` and prints this format, with the same `HALT:` line for a self-jump or a CPU-14 halt (`steps` counts the same). `make -C verif/verilator compare PROG=<name>` diffs it against `ref_sim.py`. MMIO is real there (the timer counts), so programs that read the timer differ.
 
 ## Tool settings
 - **MARS:** *Settings → Delayed branching* **off**; *Memory Configuration → Default*; Bitmap Display: unit 4×4, display 512 wide, base address `0x10040000 (heap)`.
 - **Quartus (MAX 10):** configuration mode *"Single Uncompressed Image with Memory Initialization"* (required to initialize on-chip memory from the `.hex` images).
 - **Instruction RAM:** enable *In-System Memory Content Editor* on the 4 banks to load programs without recompiling.
-- **GCC:** `mips-linux-gnu-gcc` (package `gcc-mips-linux-gnu` in WSL) with `-march=mips1 -msoft-float -mno-abicalls -G0 -EB` (**big-endian**, TC-14).
+- **GCC:** `mips-linux-gnu-gcc` (package `gcc-mips-linux-gnu` in WSL) with `-march=mips1 -msoft-float -mno-abicalls -G0 -EB` (**big-endian**, TC-14). Startup code, linker script and ELF → `.hex`: `src/c/` (TC-9, see its README). Constants (`.rodata`) go to the data region: the instruction memory can't be read by loads.
 - **Assembler:** text base `0x00000000` by default; `--text-base 0x00400000` only to compare with MARS dumps.
 - **GNU as test programs (CPU-7, CPU-8):** `src/programs/*.s` with `.set noreorder` (every delay slot written by hand, like GCC output). `src/tools/gas_image.sh <file.s>` (WSL) assembles one with `mips-linux-gnu-as -EB -march=mips1` and writes the word image `mem/<name>.hex`. The real assembler is also an independent check of our encodings. Use `div $zero, rs, rt` (3 operands): the 2-operand `div` is a GNU as macro with a zero check.
 - **Website:** [Astro Starlight](https://starlight.astro.build) in `web/`. One Markdown page per topic in `web/src/content/docs/`; the sidebar is set in `web/astro.config.mjs`. Run `npm run build` from `web/` before opening a PR (it must pass). Vercel deploys with **Root Directory = `web`**: production from `main`, a preview URL for each PR.

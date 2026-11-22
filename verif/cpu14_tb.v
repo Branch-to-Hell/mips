@@ -30,7 +30,7 @@ mips_pipeline dut(.clk(clk), .reset(reset), .mem_addr(mem_addr), .mem_wdata(mem_
     .mem_we(mem_we), .mem_re(mem_re), .mem_be(mem_be), .mem_rdata(mem_rdata), .dbg_sel(5'd0), .dbg_value(),
     .mem_fault(mem_fault), .halted(halted), .halt_cause(halt_cause),
     .halt_pc(halt_pc), .halt_addr(halt_addr));
-data_memory dm(.clk(clk), .MemRead(mem_re), .MemWrite(mem_we), .Address(mem_addr),
+data_memory dm(.clk(clk), .MemRead(mem_re), .MemWrite(mem_we), .ByteEnable(mem_be), .Address(mem_addr),
     .WriteData(mem_wdata), .ReadData(mem_rdata));
 always #5 clk = ~clk;
 
@@ -56,13 +56,13 @@ function [31:0] jr(input [4:0] rs); jr = {6'h00, rs, 15'd0, 6'h08}; endfunction
 task start;
 begin
     reset = 1;
-    for (i = 0; i < 4096; i = i + 1) begin put(i, BAD); dm.mem[i] = 0; end
+    for (i = 0; i < 4096; i = i + 1) begin put(i, BAD); dm.write_word(i, 0); end
     @(posedge clk); #1;
     for (i = 0; i < 32; i = i + 1) dut.rf.registers[i] = 0;
     dut.rf.registers[S1] = 32'h1001_0000;   // data base
     dut.rf.registers[S2] = 32'h2000_0000;   // in no region
     dut.rf.registers[T2] = 32'h5555;        // a bad lw must not overwrite it
-    dm.mem[0] = 32'h1234;
+    dm.write_word(0, 32'h1234);
 end
 endtask
 
@@ -164,7 +164,7 @@ initial begin
     put(2, i_t(ADDI, 0, T4, 16'd9));
     run_and_check("misaligned sw", 2'd3, 32'h4, 32'h1001_0001);
     checks = checks + 1;
-    if (dm.mem[0] !== 32'h1234) begin $display("FAIL  misaligned sw changed memory"); errors = errors + 1; end
+    if (dm.word(0) !== 32'h1234) begin $display("FAIL  misaligned sw changed memory"); errors = errors + 1; end
     expect_reg(T4, 0);
 
     // 7: jr to a bad address with a bad lw in its delay slot. The bad fetch reaches ID while
@@ -191,7 +191,7 @@ initial begin
     put(2, i_t(ADDI, 0, T4, 16'd9));
     run_and_check("misaligned sh", 2'd3, 32'h4, 32'h1001_0003);
     checks = checks + 1;
-    if (dm.mem[0] !== 32'h1234) begin $display("FAIL  misaligned sh changed memory"); errors = errors + 1; end
+    if (dm.word(0) !== 32'h1234) begin $display("FAIL  misaligned sh changed memory"); errors = errors + 1; end
     expect_reg(T4, 0);
 
     // 10: lb at an odd address does not halt; the lw after it to no region does.

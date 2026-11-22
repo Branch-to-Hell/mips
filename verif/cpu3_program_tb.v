@@ -10,7 +10,7 @@ reg [31:0] leds = 0;
 integer i;
 mips_cpu dut(.clk(clk), .reset(reset), .mem_addr(mem_addr),
     .mem_wdata(mem_wdata), .mem_we(mem_we), .mem_re(mem_re), .mem_rdata(mem_rdata));
-data_memory dm(.clk(clk), .MemRead(mem_re), .MemWrite(mem_we),
+data_memory dm(.clk(clk), .MemRead(mem_re), .MemWrite(mem_we), .ByteEnable(4'b1111),
     .Address(mem_addr), .WriteData(mem_wdata), .ReadData(mem_rdata));
 always #5 clk = ~clk;
 initial begin
