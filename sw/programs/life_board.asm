@@ -21,6 +21,8 @@
 #     the cursor cell blinks between red and its real color (~0.25 s each)
 #     KEY0  = toggle the cell under the cursor (alive <-> dead)
 #   LEDR0   = on while running
+#   LEDR9-1 = live-cell bar (LIFE-4): one LED per 32 live cells, rounded up, at most 9
+#             (a random board, ~190 cells, lights ~6; it fills at 257 or more)
 #   HEX     = generation number (0 after loading a pattern)
 # Starts paused with a glider. To draw from scratch: run, load "empty" (SW5-4 = 10),
 # pause, draw with the switches and KEY0, then run.
@@ -46,12 +48,15 @@ main:
     addi $a1, $zero, -1         # a1 = cursor cell (row*32 + column), -1 = no cursor
     addi $a2, $zero, 1          # a2 = passes left until the cursor blinks
     addi $a3, $zero, 0          # a3 = blink phase: 1 = red, 0 = the cell's real color
+    addi $gp, $zero, 0          # gp = live-cell bar for LEDR9-1 (LIFE-4), v0 = live cells
     jal  load_pattern
     jal  draw
+    jal  update_leds
 
 main_loop:
     addi $s6, $s6, 1
-    sw   $s7, 0x18($s4)         # LEDR0 = running
+    or   $t3, $gp, $s7          # LEDR0 = running, LEDR9-1 = live-cell bar
+    sw   $t3, 0x18($s4)         # LEDR
     sw   $k0, 0x1C($s4)         # HEX = generation
     lw   $t0, 0x10($s4)         # t0 = SW
     andi $s5, $t0, 15           # SW3-0 = speed
@@ -94,6 +99,7 @@ key0:
     addi $k0, $zero, 0
     jal  load_pattern
     jal  draw
+    jal  update_leds            # live-cell bar for the new pattern
     j    wait                   # full wait before the new pattern evolves
 toggle:
     slt  $t3, $a1, $zero
@@ -104,6 +110,7 @@ toggle:
     addi $t5, $zero, 1
     sub  $t4, $t5, $t4          # 0 <-> 1
     sw   $t4, 0($t3)
+    jal  update_leds            # live-cell bar follows the toggle
     addi $a3, $zero, 0
     jal  cursor_paint           # show the new state right away...
     lui  $a2, 4                 # ...for a full blink period
@@ -123,6 +130,7 @@ run:
     jal  generation
     jal  draw
     addi $k0, $k0, 1            # generation done (hw/sim/life_tb.v looks for this instruction)
+    jal  update_leds            # live-cell bar for the new generation
 wait:
     addi $t0, $zero, 16
     sub  $t0, $t0, $s5
@@ -258,6 +266,36 @@ paint_cell:
     sw   $t9, 1540($t4)
     sw   $t9, 1544($t4)
     sw   $t9, 1548($t4)
+    jr   $ra
+
+# ---- update_leds: count the live cells (v0) and build the bar for LEDR9-1 (gp) ----
+# One LED per 32 live cells, rounded up, at most 9. LEDR0 stays "running".
+# The main loop writes LEDR = gp | running. Uses t0-t2.
+update_leds:
+    addi $v0, $zero, 0          # v0 = live cells
+    addi $t0, $zero, 0          # t0 = cell 0..767
+ul_count:
+    sll  $t1, $t0, 2
+    add  $t1, $t1, $s1
+    lw   $t1, 0($t1)            # 0 or 1
+    add  $v0, $v0, $t1
+    addi $t0, $t0, 1
+    addi $t2, $zero, 768
+    bne  $t0, $t2, ul_count
+    addi $t0, $v0, 31
+    srl  $t0, $t0, 5            # LEDs lit = ceil(live / 32)
+    slti $t1, $t0, 10
+    bne  $t1, $zero, ul_cap_ok
+    addi $t0, $zero, 9          # at most 9 LEDs (LEDR9-1)
+ul_cap_ok:
+    addi $gp, $zero, 0          # gp = bar: bits 1..lit set
+ul_bar:
+    beq  $t0, $zero, ul_done
+    sll  $gp, $gp, 1
+    ori  $gp, $gp, 2
+    addi $t0, $t0, -1
+    j    ul_bar
+ul_done:
     jr   $ra
 
 # ---- load_pattern: clear both buffers, then fill the current one (a0 = pattern) ----

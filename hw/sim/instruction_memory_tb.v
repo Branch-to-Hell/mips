@@ -8,7 +8,7 @@ For each fetch: the 4 bytes mem[PC]..mem[PC+3], the joined word, and that the
 word only changes on the clock edge.
 */
 module instruction_memory_tb;
-localparam N = 287; // instructions in life_board.hex
+integer N; // instructions in life_board.hex, counted from the file (it changes with the program)
 
 reg clk = 0;
 reg [31:0] Address = 0;
@@ -52,7 +52,12 @@ initial begin
     for (i = 0; i < 4096; i = i + 1) words[i] = 32'hx;
     $readmemh("../mem/life_board.hex", words);
     $readmemh("../mem/life_board_bytes.hex", image);
-    if (words[N - 1] === 32'hx || words[N] !== 32'hx) $fatal(1, "life_board.hex should have %0d words", N);
+    N = 0;
+    while (N < 4096 && words[N] !== 32'hx) N = N + 1;
+    if (N == 0) $fatal(1, "life_board.hex is empty");
+    if (image[4 * N - 1] === 8'hx || image[4 * N] !== 8'hx)
+        $fatal(1, "life_board_bytes.hex should have %0d bytes (%0d words)", 4 * N, N);
+    $display("life_board: %0d instructions", N);
 
     // Every instruction of the program, text base 0 (CPU-13) and MARS base 0x00400000.
     for (i = 0; i < N; i = i + 1) fetch(32'h0000_0000 + 4 * i, i < 3);
