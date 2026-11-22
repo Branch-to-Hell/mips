@@ -15,6 +15,7 @@ off so the Game of Life build doesn't spend 64 KB of M9K on it
 */
 module life_system #(
     parameter IMEM_INIT = "",
+    parameter DMEM_INIT = "",            // .data image (<name>_data.hex), "" = all zeros
     parameter DEBOUNCE_CYCLES = 250_000, // 10 ms at 25 MHz; the testbench uses a small value
     parameter CYCLES_PER_MS = 25_000,    // timer: 1 ms at 25 MHz; the testbench uses a small value
     parameter MODE_B = 0                 // 1 = include video mode B
@@ -64,7 +65,7 @@ mips_pipeline #(.IMEM_INIT(IMEM_INIT)) cpu (
 );
 
 // Data: 0x1001_0000 - 0x1001_3FFF (16 KB)
-data_memory dm (
+data_memory #(.INIT_FILE(DMEM_INIT)) dm (
     .clk(clk), .MemRead(mem_re), .MemWrite(mem_we),
     .Address(mem_addr), .WriteData(mem_wdata), .ReadData(dm_rdata)
 );
