@@ -177,6 +177,23 @@ Both are dual-port RAMs: the CPU writes, the VGA reads.
 - **Byte order:** the JTAG master writes Avalon byte lanes (byte address A+k = `byteenable[k]`), and the CPU bridge swaps the bytes of each word (see SDRAM above), so the CPU sees the file in order: `lb` at offset + *i* = file byte *i*, and `lw` = 4 file bytes, most significant first (big-endian, like the WAD read by `-EB` code).
 - **`sdram_test`:** the smoke test writes all 64 MB after reset and on KEY0, so **SW9 = 1** (LEDR8 on) keeps it from starting; set it before loading. The file is lost on power-off, and a KEY1 reset holds the controller in reset (no refresh while the key is down), so after a reset run `wad_verify` or load again.
 
+## Reference simulator trace (TC-6)
+`sw/tools/ref_sim.py` runs an assembler image (`<name>.hex` + `<name>_data.hex`) and prints one line per register write, in program order. The Verilator harness (TC-7) prints **the same format**, so the two traces compare with a plain `diff` (TC-11).
+
+```
+PC=0x00000000 R8 <= 0x00000005
+PC=0x00000010 HI <= 0x00000000
+PC=0x00000010 LO <= 0x0000001E
+HALT: jumps to itself at 0x00000034  (steps=15)
+```
+
+- `PC` is the address of the instruction that writes, `R<n>` the register in decimal, values in 8 uppercase hex digits. Writes to `$zero` are not printed (a `nop` prints nothing).
+- `mult multu div divu` print `HI` then `LO`. `mthi` and `mtlo` print one line. `div`/`divu` by zero print nothing and leave HI/LO unchanged.
+- Same state as `mips_pipeline` after reset: PC = text base, `$sp = 0x7FFF_EFFC`, every other register 0 (MARS also sets `$gp = 0x1000_8000`; the CPU does not).
+- Delay slot as in the pipeline: `jal`/`jalr` write PC + 8 and the instruction after a jump always runs.
+- Invalid fetch, load or store: the same halt as the CPU (cause 1/2/3, see "Halt on invalid access") with the memory map above, printed as `HALT: cause 2 (load) pc 0x... addr 0x...`. The failing instruction writes nothing.
+- The last line always starts with `HALT:` and says why the run ended. Drop it before comparing with the CPU trace.
+
 ## Tool settings
 - **MARS:** *Settings → Delayed branching* **off**; *Memory Configuration → Default*; Bitmap Display: unit 4×4, display 512 wide, base address `0x10040000 (heap)`.
 - **Quartus (MAX 10):** configuration mode *"Single Uncompressed Image with Memory Initialization"* (required to initialize on-chip memory from the `.hex` images).
