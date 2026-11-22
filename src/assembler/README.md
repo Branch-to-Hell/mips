@@ -12,6 +12,8 @@ python src/assembler/assembler.py src/programs/<name>.asm
 
 Example: `python src/assembler/assembler.py src/programs/life_board.asm` rewrites `mem/life_board*.hex`.
 
+On success it prints the number of instructions and data words, and, when the files go to `mem/`, the two `set_parameter` lines for `quartus/program.qsf` that put the program on the board (steps 4 and 5 in the [root README](../../README.md)). `--help` lists the options below.
+
 | Option               | Meaning                                                                                                                                                   |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `-o <folder>`        | Write the files to `<folder>` instead of `mem/` (created if missing).                                                                                  |
