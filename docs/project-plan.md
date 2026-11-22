@@ -26,13 +26,13 @@ The Game of Life also runs on the **single-cycle CPU**, so the minimum deliverab
 ### How the pieces fit together
 ```
  Level 1 (assembly)                           Level 2 (C / Doom)
- sw/programs/*.asm ─► sw/assembler/           sw/doom/ (doomgeneric + our platform layer)
+ src/programs/*.asm ─► src/assembler/           src/doom/ (doomgeneric + our platform layer)
                         │                        │  mipsel-linux-gnu-gcc + linker script + crt0
                         ▼                        ▼
-                  hw/mem/*.hex              ELF ─► .hex / WAD loaded into SDRAM
+                  mem/*.hex              ELF ─► .hex / WAD loaded into SDRAM
                         │                        │
                         ▼                        ▼
- Switches/keys ─► MMIO ─► hw/rtl/ MIPS CPU (pipeline + hazard unit) ─► Framebuffer ─► VGA
+ Switches/keys ─► MMIO ─► rtl/ MIPS CPU (pipeline + hazard unit) ─► Framebuffer ─► VGA
                                │
                     On-chip RAM (level 1)  /  SDRAM 64 MB (level 2)
 ```
@@ -54,10 +54,10 @@ Practical rules:
 ## 3. Who does what (and where)
 | Person | Focus | Works mainly in |
 |---|---|---|
-| **Ariel** | **FPGA platform lead.** Everything around the CPU on the board: top-levels, VGA modes, MMIO, timer, SDRAM, WAD loading, lab sessions, Vercel deploy. Leads Doom on the hardware side | `hw/rtl/` (platform), `hw/quartus/`, `hw/mem/` |
-| **Victor** | **CPU core lead.** Datapath, control, pipeline, hazard unit, delay slot, full MIPS I instruction set, Verilator harness | `hw/rtl/` (CPU), `hw/sim/` |
-| **Uriel** | **Toolchain lead.** Our assembler, the reference simulator, trace comparison, GCC toolchain, cross-compiling Doom | `sw/assembler/`, `sw/tools/`, `sw/doom/` (build) |
-| **Yocelyn** | **Software and website lead.** Game of Life, test programs, Doom's platform layer in C, website, report and slides | `sw/programs/`, `sw/doom/`, `web/`, `docs/` |
+| **Ariel** | **FPGA platform lead.** Everything around the CPU on the board: top-levels, VGA modes, MMIO, timer, SDRAM, WAD loading, lab sessions, Vercel deploy. Leads Doom on the hardware side | `rtl/` (platform), `quartus/`, `mem/` |
+| **Victor** | **CPU core lead.** Datapath, control, pipeline, hazard unit, delay slot, full MIPS I instruction set, Verilator harness | `rtl/` (CPU), `verif/` |
+| **Uriel** | **Toolchain lead.** Our assembler, the reference simulator, trace comparison, GCC toolchain, cross-compiling Doom | `src/assembler/`, `src/tools/`, `src/doom/` (build) |
+| **Yocelyn** | **Software and website lead.** Game of Life, test programs, Doom's platform layer in C, website, report and slides | `src/programs/`, `src/doom/`, `web/`, `docs/` |
 
 **Pairs:** Ariel + Victor (hardware), Uriel + Yocelyn (software). Ariel checks every PR before merging it.
 
@@ -104,7 +104,7 @@ Everyone has this ready before picking up a task. Details of each tool's configu
 | Java + MARS 4.5 | Everyone | Memory Configuration **Default**, Delayed branching **off** |
 | Git + access to `Branch-to-Hell/mips` | Everyone | Git is used from Windows only |
 | Node.js (LTS) | Everyone | Runs the website (Astro Starlight). From `web/`: `npm install` once, then `npm run dev` |
-| Python 3 (3.10 or newer) | Everyone | Runs our assembler and the tools in `sw/tools/` (reference simulator, trace comparison, converters). From Windows: `python sw/assembler/assembler.py <file>.asm`. `pip install pillow` only for `img2fb.py` with images |
+| Python 3 (3.10 or newer) | Everyone | Runs our assembler and the tools in `src/tools/` (reference simulator, trace comparison, converters). From Windows: `python src/assembler/assembler.py <file>.asm`. `pip install pillow` only for `img2fb.py` with images |
 | WSL (Ubuntu) + Verilator + `gcc-mipsel-linux-gnu` | Everyone | Used only for Verilator and GCC, from the repo folder (`wsl --cd .`) |
 | Memory map and MMIO registers | — | Decided in `contracts.md` |
 | GitHub Project board, labels and sprint milestones | — | Created by the backlog script |
@@ -112,7 +112,7 @@ Everyone has this ready before picking up a task. Details of each tool's configu
 ### CPU core
 | ID | Task | Owner | Pri | Sprint | Done when |
 |---|---|---|---|---|---|
-| CPU-1 | Bring the R-type single-cycle into `hw/rtl/` with our naming | Victor + Ariel | P0 | S1 | Passes its R-type tests in the new repo |
+| CPU-1 | Bring the R-type single-cycle into `rtl/` with our naming | Victor + Ariel | P0 | S1 | Passes its R-type tests in the new repo |
 | CPU-2 | I-type: `addi andi ori slti lui lw sw` | Victor | P0 | S1 | Each instruction verified in ModelSim |
 | CPU-3 | Branches and jumps: `beq bne j jal jr` | Victor | P0 | S1 | Verified in ModelSim |
 | CPU-4 | Pipeline registers IF/ID, ID/EX, EX/MEM, MEM/WB | Victor | P0 | S2 | Programs with no dependencies run correctly; each register documented (width, enable, reset, valid, update) |
@@ -158,7 +158,7 @@ Everyone has this ready before picking up a task. Details of each tool's configu
 | TC-10 | Minimal C library (newlib or picolibc) + `sbrk`/heap | Uriel | P1 | S2 | `malloc`, `memcpy`, `printf`-to-nothing work |
 | TC-11 | C programs pass the trace comparison (**checkpoint Nov 20**) | Uriel + Victor | P1 | S2 | 3 C programs match with zero differences |
 | TC-12 | Professor drill: unseen MARS program → assemble → load → verify | Uriel + Victor | P0 | S3 | Done in under 15 minutes |
-| TC-13 | Assembler v3: professor's encodings, `--text-base`, byte-per-address image + 4 bank `.hex` (all outputs in `hw/mem/`), listing with instruction text, line diagnostics (`j` region, alignment, duplicate labels) | Uriel | P0 | S2 | Every diagnostic has an example; image regenerates with one command |
+| TC-13 | Assembler v3: professor's encodings, `--text-base`, byte-per-address image + 4 bank `.hex` (all outputs in `mem/`), listing with instruction text, line diagnostics (`j` region, alignment, duplicate labels) | Uriel | P0 | S2 | Every diagnostic has an example; image regenerates with one command |
 | TC-14 | Big-endian toolchain for Doom (`mips-linux-gnu-gcc -EB`) | Uriel + Ariel | P1 | S2 | C "hello pixels" built with `-EB` runs in simulation |
 | TC-15 | Graded algorithm: professor's approval, pseudocode, register/data map, self-jump end, 3 inputs (one edge case) | Yocelyn | P0 | S2 | Expected vs observed for the 3 inputs |
 | TC-16 | Professor's test coverage and one trace per format (R, I, J) | Yocelyn + Victor | P0 | S3 | Every case on the professor's list, with how to reproduce it |
@@ -194,7 +194,7 @@ Everyone has this ready before picking up a task. Details of each tool's configu
 | WEB-4 | Game of Life and Doom pages, with screenshots | Yocelyn | P0 | S3 | Published |
 | WEB-5 | Final evaluation of the project with AI's help, and every report section written on the website | Everyone | P0 | S3 | All report sections the professor asks for, published on the site |
 | WEB-6 | AI usage per module, problem log and individual sheets | Everyone | P0 | S3 | Published on the site |
-| DEMO-1 | Freeze the demo build: tag the commit and keep the `.sof` + `hw/mem/*.hex` images used in the validations (GitHub Release + USB) | Ariel | P0 | S3 (Wed Nov 25) | The exact files we'll use on Nov 30 are tagged and backed up; the tag is the graded version we hand in |
+| DEMO-1 | Freeze the demo build: tag the commit and keep the `.sof` + `mem/*.hex` images used in the validations (GitHub Release + USB) | Ariel | P0 | S3 (Wed Nov 25) | The exact files we'll use on Nov 30 are tagged and backed up; the tag is the graded version we hand in |
 | DEMO-6 | Repo folders: RTL, DOCS, VERIF, SRC (one PR, no open pipeline branches) | Ariel | P0 | S3 (before Wed Nov 25) | Everything compiles and every testbench runs after the move |
 | DEMO-2 | 5-minute slides and script | Yocelyn | P0 | S3 | Reviewed by the team |
 | DEMO-3 | Full rehearsal | Everyone | P0 | S3 (Fri Nov 27) | Done once end to end |

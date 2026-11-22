@@ -45,7 +45,7 @@ Pseudo-instructions handled by our assembler: `li la move nop`.
   - In ID: `beq/bne` compare the two register operands directly (no ALU), and `bltz bgez blez bgtz bltzal bgezal` look only at the sign bit of `rs` and whether it is zero; the target is `PC + 4 + (offset << 2)`, `j/jal` use `{(PC + 4)[31:28], target, 00}` and `jr/jalr` use `rs`. The fetch PC changes on the same edge that fetches the delay slot, so **nothing is flushed** (CPU-6).
   - `jal` writes **`PC + 8`** into `$ra` (the instruction after the delay slot), and so do `jalr` (into `rd`) and `bltzal/bgezal`. The single-cycle `mips_cpu` has no delay slot and writes `PC + 4`.
 - An instruction in WB is visible to the instruction in ID **in the same cycle**. The register file is shared with the single-cycle CPU and writes on `posedge` (end of WB), so `mips_pipeline` adds a write-through bypass from WB to the ID read ports (never for `$zero`). It behaves like "write in the first half, read in the second".
-- Until LIFE-6 checks it on the board, the pipeline lives in `hw/rtl/mips_pipeline.v` and the board keeps the single-cycle `mips_cpu`. LIFE-6 replaces `mips_cpu` with it.
+- **LIFE-6:** `life_system` (so `top_life` and `top_video_b_test`) runs `mips_pipeline`. The single-cycle `mips_cpu` stays in the repo for its own testbenches and `top_mmio_test`; the board fallback is the single-cycle `.sof` saved before the switch.
 - **Memory stall input:** the whole pipeline freezes while a memory access isn't ready (needed for SDRAM).
 
 ### Delay-slot rule for assembly programs
@@ -114,7 +114,7 @@ The hardware doesn't implement the whole 4 GB. The address decoder looks at the 
 | SDRAM (phase 2) | defined in Sprint 2 | 64 MB | Doom code, data, heap and WAD |
 
 ### CPU memory bus
-`mips_cpu` has no memory inside except the instruction memory. Loads and stores go out through this bus, and the top level (`top_life`, PLT-3) sends each access to data, stack, framebuffer or MMIO by looking at the address.
+The CPU has no memory inside except the instruction memory. Loads and stores go out through this bus, and the top level (`life_system`, PLT-3) sends each access to data, stack, framebuffer or MMIO by looking at the address. The same address decoder drives `mem_fault` (CPU-14): an address in no region of the memory map halts the CPU. While halted, `life_system` shows the error code: LEDR9 = halted, LEDR1-0 = cause, HEX = `E`, cause, bad address bits 15..0 (SW8 up: PC bits 23..0). SW9 still picks the register debug view. Checked in `verif/halt_tb.v`.
 
 | Port | Dir | Notes |
 |---|---|---|
@@ -135,12 +135,13 @@ Phase 2 adds a `mem_stall` input here (CPU-9).
 The professor asks for **one byte per address** and big-endian fetch: the word is `mem[PC]`, `mem[PC+1]`, `mem[PC+2]`, `mem[PC+3]`, from the most significant byte to the least.
 - Built as **4 byte-lane banks** of 4,096 bytes each: bank *k* holds the bytes at addresses with `addr[1:0] = k`, indexed by `addr[13:2]`.
 - All 4 banks are read in the same cycle and joined as `{bank0, bank1, bank2, bank3}`, so fetch takes one cycle, the same as before.
-- **Image files** for a program `<name>` (in `hw/mem/`), all with one byte per line, 2 hex digits, LF, no addresses:
+- **Image files** for a program `<name>` (in `mem/`), all with one byte per line, 2 hex digits, LF, no addresses:
   - `<name>_bytes.hex`: one byte per address, big-endian (the professor's loadable image).
   - `<name>_b0.hex` … `<name>_b3.hex`: bank *k* = the bytes at addresses with `addr[1:0] = k`; line *i* is the byte of instruction *i*.
   - `instruction_memory` loads the 4 bank files with `$readmemh` from the prefix in `IMEM_INIT` (e.g. `"../mem/life_board"`), in ModelSim and in Quartus.
-  - The assembler writes them from the ASM (TC-13), together with the word image `<name>.hex` and the data image `<name>_data.hex`. Everything goes to `hw/mem/` by default (or to the folder given with `-o`), never to `sw/programs/`. Until then, `sw/tools/hex2banks.py` makes them from a word `.hex`.
+  - The assembler writes them from the ASM (TC-13), together with the word image `<name>.hex` and the data image `<name>_data.hex`. Everything goes to `mem/` by default (or to the folder given with `-o`), never to `src/programs/`. For a word `.hex` that does not come from our assembler (for example GNU as output), `src/tools/hex2banks.py` makes the same files.
   - **No `.mif` files** for program images: `$readmemh` with `.hex` works the same in ModelSim and Quartus.
+  - **`.data` (TC-15):** `data_memory` loads `<name>_data.hex` (one word per line from `0x1001_0000`) through its `INIT_FILE` parameter, as the initial content of its RAM; the rest of the region starts at 0. `life_system` passes it as `DMEM_INIT`. `top_program` (Quartus revision `program`) runs any assembled program with its `.data`, picked in `program.qsf`, without touching the Game of Life build. The data is loaded at configuration time only: a reset does not restore it.
 
 ### Memory timing
 All memories read on a clock edge, so Quartus can place them in M9K blocks (a combinational read doesn't fit: 16 KB of flip-flops is more than the whole FPGA).
@@ -178,17 +179,34 @@ Both are dual-port RAMs: the CPU writes, the VGA reads.
 
 ## SDRAM (PLT-7)
 - **Chip:** ISSI IS42S16320D-7, 32M × 16 = 64 MB, 4 banks, 13 row bits, 10 column bits.
-- **Platform Designer system `sdram_sys`** (`hw/quartus/sdram_sys.qsys`, rebuilt by `sdram_sys.tcl`): Intel SDRAM Controller (CAS latency 2, refresh every 7.8125 µs, 100 µs power-up) behind a **32-bit Avalon-MM bridge**. Platform Designer adds the 32 → 16 width adapter, so the master sees 64 MB of 32-bit words.
+- **Platform Designer system `sdram_sys`** (`quartus/sdram_sys.qsys`, rebuilt by `sdram_sys.tcl`): Intel SDRAM Controller (CAS latency 2, refresh every 7.8125 µs, 100 µs power-up) behind a **32-bit Avalon-MM bridge**. Platform Designer adds the 32 → 16 width adapter, so the master sees 64 MB of 32-bit words.
 - **Interface `mem`** (what the CPU bridge, PLT-8, masters): 26-bit **byte** address (multiple of 4), `read`/`write`, `writedata`/`readdata` 32 bits, `byteenable` 4 bits, `waitrequest` (hold the command while it's 1), `readdatavalid` (read data arrives a few cycles later). One access at a time takes ~6–7 cycles.
 - **Byte order:** Avalon byte lanes are little-endian (byte address A+k = bits 8k+7..8k = `byteenable[k]`). The CPU is big-endian, so the PLT-8 bridge **swaps the 4 bytes** of `writedata`/`readdata` and reverses `byteenable`. Then a file written byte by byte into SDRAM (WAD loading, PLT-10) reads back correctly with `lb`.
-- **Quartus:** revision `sdram_test` (`top_sdram_test`) adds `sdram_sys.qsys` with `QSYS_FILE`, so Quartus generates its HDL during compilation. `hw/sim/sdram.do` generates the simulation HDL (with the controller's memory model) by itself.
+- **Quartus:** revision `sdram_test` (`top_sdram_test`) adds `sdram_sys.qsys` with `QSYS_FILE`, so Quartus generates its HDL during compilation. `verif/sdram.do` generates the simulation HDL (with the controller's memory model) by itself.
 
 ## WAD loading (PLT-10)
 - **Hardware:** `sdram_sys` has a second master on the SDRAM, a **JTAG to Avalon Master** (`jtag`, no ports at the top level). Platform Designer arbitrates it with the CPU bridge, so the PC can read and write the SDRAM over the USB-Blaster while the design runs. Any top level with `sdram_sys` gets it (today `sdram_test`, later `top_doom`).
-- **Script:** `sw/tools/wad_load.tcl` (System Console) writes a file into the SDRAM, reads it back and compares it: `system-console -cli --script=sw/tools/wad_load.tcl <file> [offset]` prints `PASS: the SDRAM holds the file byte-exact`. Inside System Console: `source sw/tools/wad_load.tcl`, then `wad_load <file> [offset]` or `wad_verify <file> [offset]` (read back only).
+- **Script:** `src/tools/wad_load.tcl` (System Console) writes a file into the SDRAM, reads it back and compares it: `system-console -cli --script=src/tools/wad_load.tcl <file> [offset]` prints `PASS: the SDRAM holds the file byte-exact`. Inside System Console: `source src/tools/wad_load.tcl`, then `wad_load <file> [offset]` or `wad_verify <file> [offset]` (read back only).
 - **Where:** byte *i* of the file goes to SDRAM byte offset `offset + i`. Default offset `0x0300_0000` (the top 16 MB of the SDRAM; Doom's code, data and heap use the lower 48 MB). Provisional until the SDRAM region gets its CPU address in the memory map; then the WAD is at `SDRAM base + 0x0300_0000`.
 - **Byte order:** the JTAG master writes Avalon byte lanes (byte address A+k = `byteenable[k]`), and the CPU bridge swaps the bytes of each word (see SDRAM above), so the CPU sees the file in order: `lb` at offset + *i* = file byte *i*, and `lw` = 4 file bytes, most significant first (big-endian, like the WAD read by `-EB` code).
 - **`sdram_test`:** the smoke test writes all 64 MB after reset and on KEY0, so **SW9 = 1** (LEDR8 on) keeps it from starting; set it before loading. The file is lost on power-off, and a KEY1 reset holds the controller in reset (no refresh while the key is down), so after a reset run `wad_verify` or load again.
+
+## Reference simulator trace (TC-6)
+`src/tools/ref_sim.py` runs an assembler image (`<name>.hex` + `<name>_data.hex`) and prints one line per register write, in program order. The Verilator harness (TC-7) prints **the same format**, so the two traces compare with a plain `diff` (TC-11).
+
+```
+PC=0x00000000 R8 <= 0x00000005
+PC=0x00000010 HI <= 0x00000000
+PC=0x00000010 LO <= 0x0000001E
+HALT: jumps to itself at 0x00000034  (steps=15)
+```
+
+- `PC` is the address of the instruction that writes, `R<n>` the register in decimal, values in 8 uppercase hex digits. Writes to `$zero` are not printed (a `nop` prints nothing).
+- `mult multu div divu` print `HI` then `LO`. `mthi` and `mtlo` print one line. `div`/`divu` by zero print nothing and leave HI/LO unchanged.
+- Same state as `mips_pipeline` after reset: PC = text base, `$sp = 0x7FFF_EFFC`, every other register 0 (MARS also sets `$gp = 0x1000_8000`; the CPU does not).
+- Delay slot as in the pipeline: `jal`/`jalr` write PC + 8 and the instruction after a jump always runs.
+- Invalid fetch, load or store: the same halt as the CPU (cause 1/2/3, see "Halt on invalid access") with the memory map above, printed as `HALT: cause 2 (load) pc 0x... addr 0x...`. The failing instruction writes nothing.
+- The last line always starts with `HALT:` and says why the run ended. Drop it before comparing with the CPU trace.
 
 ## Tool settings
 - **MARS:** *Settings → Delayed branching* **off**; *Memory Configuration → Default*; Bitmap Display: unit 4×4, display 512 wide, base address `0x10040000 (heap)`.
@@ -196,7 +214,7 @@ Both are dual-port RAMs: the CPU writes, the VGA reads.
 - **Instruction RAM:** enable *In-System Memory Content Editor* on the 4 banks to load programs without recompiling.
 - **GCC:** `mips-linux-gnu-gcc` (package `gcc-mips-linux-gnu` in WSL) with `-march=mips1 -msoft-float -mno-abicalls -G0 -EB` (**big-endian**, TC-14).
 - **Assembler:** text base `0x00000000` by default; `--text-base 0x00400000` only to compare with MARS dumps.
-- **GNU as test programs (CPU-7, CPU-8):** `sw/programs/*.s` with `.set noreorder` (every delay slot written by hand, like GCC output). `sw/tools/gas_image.sh <file.s>` (WSL) assembles one with `mips-linux-gnu-as -EB -march=mips1` and writes the word image `hw/mem/<name>.hex`. The real assembler is also an independent check of our encodings. Use `div $zero, rs, rt` (3 operands): the 2-operand `div` is a GNU as macro with a zero check.
+- **GNU as test programs (CPU-7, CPU-8):** `src/programs/*.s` with `.set noreorder` (every delay slot written by hand, like GCC output). `src/tools/gas_image.sh <file.s>` (WSL) assembles one with `mips-linux-gnu-as -EB -march=mips1` and writes the word image `mem/<name>.hex`. The real assembler is also an independent check of our encodings. Use `div $zero, rs, rt` (3 operands): the 2-operand `div` is a GNU as macro with a zero check.
 - **Website:** [Astro Starlight](https://starlight.astro.build) in `web/`. One Markdown page per topic in `web/src/content/docs/`; the sidebar is set in `web/astro.config.mjs`. Run `npm run build` from `web/` before opening a PR (it must pass). Vercel deploys with **Root Directory = `web`**: production from `main`, a preview URL for each PR.
 
 ## Changes from the professor's spec
