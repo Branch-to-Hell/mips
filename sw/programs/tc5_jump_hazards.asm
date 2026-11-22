@@ -5,6 +5,7 @@
 # Written as in MARS with Delayed branching OFF: NO nops anywhere. Every dependency is
 # back-to-back on purpose, so the hazard unit has to stall/forward, and the assembler's
 # nop after each branch/jump must not change what the program computes.
+# Run on mips_pipeline: from hw/sim, `do tc5.do` (assemble first: python sw/assembler/assembler.py sw/programs/<name>.asm).
 .text
 main:
     lui  $s6, 0xFFFF            # s6 = 0xFFFF0000 (MMIO base)
@@ -26,16 +27,16 @@ j2_f:
 j2_end:
     addi $t9, $zero, 12
     bne  $v0, $t9, fail
-    addi $s0, $zero, 3            # test 3: callee copies $ra right after jal
+    addi $s0, $zero, 3            # test 3: callee copies $ra right after jal; $ra must be the return point
     jal  j3_f
+j3_ret:                           # $ra must point here: MARS links jal + 4, our CPU jal + 8 (after the delay-slot nop)
     j    j3_end
 j3_f:
     addi $s2, $ra, 0
     jr   $ra
 j3_end:
-    addi $t0, $zero, 1
-    addi $t9, $zero, 1
-    bne  $t0, $t9, fail
+    la   $t9, j3_ret              # la = lui + ori, then bne uses $t9 right away
+    bne  $s2, $t9, fail
     addi $s0, $zero, 4            # test 4: jr right after $ra was rebuilt by addi (ALU result into jr)
     addi $t1, $zero, 0
     jal  j4_outer
@@ -101,18 +102,27 @@ j7_end:
     bne  $t1, $t9, fail
     j    pass
 
+# The result code must be right even when the hazard unit is broken, so fail and pass
+# keep every dependency 3 instructions apart with nops (no stall needed).
 fail:
     lui  $t0, 0x00BA
+    nop
+    nop
     ori  $t0, $t0, 0xD000
+    nop
+    nop
     add  $t0, $t0, $s0          # 0x00BAD000 + test number
+    nop
+    nop
     sw   $t0, 0x1C($s6)         # HEX shows BAD0nn
     sw   $zero, 0x18($s6)       # all LEDs off
 stop_fail:
     j    stop_fail
 pass:
     addi $t0, $zero, 0x3FF
+    ori  $t1, $zero, 0x600D
+    nop
     sw   $t0, 0x18($s6)         # all LEDs on
-    ori  $t0, $zero, 0x600D
-    sw   $t0, 0x1C($s6)         # HEX shows 00600D
+    sw   $t1, 0x1C($s6)         # HEX shows 00600D
 stop_pass:
     j    stop_pass

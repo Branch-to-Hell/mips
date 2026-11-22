@@ -5,6 +5,7 @@
 # Written as in MARS with Delayed branching OFF: NO nops anywhere. Every dependency is
 # back-to-back on purpose, so the hazard unit has to stall/forward, and the assembler's
 # nop after each branch/jump must not change what the program computes.
+# Run on mips_pipeline: from hw/sim, `do tc5.do` (assemble first: python sw/assembler/assembler.py sw/programs/<name>.asm).
 .text
 main:
     lui  $s6, 0xFFFF            # s6 = 0xFFFF0000 (MMIO base)
@@ -63,20 +64,20 @@ main:
     add  $t2, $zero, $zero
     addi $t9, $zero, 0
     bne  $t2, $t9, fail
-    addi $s0, $zero, 10            # test 10: shift then or, back to back
+    addi $s0, $zero, 10           # test 10: shift then or, back to back
     addi $t0, $zero, 0xF0
     sll  $t1, $t0, 4
     or   $t2, $t1, $t0
     addi $t9, $zero, 4080
     bne  $t2, $t9, fail
-    addi $s0, $zero, 11            # test 11: slt feeding add
+    addi $s0, $zero, 11           # test 11: slt feeding add
     addi $t0, $zero, 3
     addi $t1, $zero, 5
     slt  $t2, $t0, $t1
     add  $t3, $t2, $t2
     addi $t9, $zero, 2
     bne  $t3, $t9, fail
-    addi $s0, $zero, 12            # test 12: lui feeding ori
+    addi $s0, $zero, 12           # test 12: lui feeding ori
     lui  $t0, 0x1234
     ori  $t1, $t0, 0x00FF
     srl  $t2, $t1, 16
@@ -84,18 +85,27 @@ main:
     bne  $t2, $t9, fail
     j    pass
 
+# The result code must be right even when the hazard unit is broken, so fail and pass
+# keep every dependency 3 instructions apart with nops (no stall needed).
 fail:
     lui  $t0, 0x00BA
+    nop
+    nop
     ori  $t0, $t0, 0xD000
+    nop
+    nop
     add  $t0, $t0, $s0          # 0x00BAD000 + test number
+    nop
+    nop
     sw   $t0, 0x1C($s6)         # HEX shows BAD0nn
     sw   $zero, 0x18($s6)       # all LEDs off
 stop_fail:
     j    stop_fail
 pass:
     addi $t0, $zero, 0x3FF
+    ori  $t1, $zero, 0x600D
+    nop
     sw   $t0, 0x18($s6)         # all LEDs on
-    ori  $t0, $zero, 0x600D
-    sw   $t0, 0x1C($s6)         # HEX shows 00600D
+    sw   $t1, 0x1C($s6)         # HEX shows 00600D
 stop_pass:
     j    stop_pass

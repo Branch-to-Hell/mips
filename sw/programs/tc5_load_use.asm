@@ -5,6 +5,7 @@
 # Written as in MARS with Delayed branching OFF: NO nops anywhere. Every dependency is
 # back-to-back on purpose, so the hazard unit has to stall/forward, and the assembler's
 # nop after each branch/jump must not change what the program computes.
+# Run on mips_pipeline: from hw/sim, `do tc5.do` (assemble first: python sw/assembler/assembler.py sw/programs/<name>.asm).
 .text
 main:
     lui  $s6, 0xFFFF            # s6 = 0xFFFF0000 (MMIO base)
@@ -70,7 +71,7 @@ main:
     add  $t1, $t0, $t0
     addi $t9, $zero, 10
     bne  $t1, $t9, fail
-    addi $s0, $zero, 10            # test 10: store then load of different addresses keeps both
+    addi $s0, $zero, 10           # test 10: store then load of different addresses keeps both
     addi $t0, $zero, 1
     addi $t1, $zero, 2
     sw   $t0, 28($s1)
@@ -80,20 +81,37 @@ main:
     add  $t4, $t2, $t3
     addi $t9, $zero, 3
     bne  $t4, $t9, fail
+    addi $s0, $zero, 11           # test 11: ALU result used right away as the base address of sw and lw
+    addi $t0, $zero, 55
+    addi $t5, $s1, 36
+    sw   $t0, 0($t5)
+    addi $t6, $s1, 36
+    lw   $t7, 0($t6)
+    addi $t9, $zero, 55
+    bne  $t7, $t9, fail
     j    pass
 
+# The result code must be right even when the hazard unit is broken, so fail and pass
+# keep every dependency 3 instructions apart with nops (no stall needed).
 fail:
     lui  $t0, 0x00BA
+    nop
+    nop
     ori  $t0, $t0, 0xD000
+    nop
+    nop
     add  $t0, $t0, $s0          # 0x00BAD000 + test number
+    nop
+    nop
     sw   $t0, 0x1C($s6)         # HEX shows BAD0nn
     sw   $zero, 0x18($s6)       # all LEDs off
 stop_fail:
     j    stop_fail
 pass:
     addi $t0, $zero, 0x3FF
+    ori  $t1, $zero, 0x600D
+    nop
     sw   $t0, 0x18($s6)         # all LEDs on
-    ori  $t0, $zero, 0x600D
-    sw   $t0, 0x1C($s6)         # HEX shows 00600D
+    sw   $t1, 0x1C($s6)         # HEX shows 00600D
 stop_pass:
     j    stop_pass
