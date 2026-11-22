@@ -13,14 +13,14 @@ Short debounce (50 cycles) so the key presses are fast. Checks:
      the cursor leaves no trace, and the drawn glider evolves like the model
 While paused the cursor is hidden with SW9-5 = 11000 (row 24) so read_board only sees
 black and white cells.
-The end of a generation is when the PC reaches addi $k0, $k0, 1 (found by its
+The end of a generation is when addi $k0, $k0, 1 reaches EX (found by its
 instruction), right after generation + draw.
 Key presses last 200,000 cycles (8 ms), shorter than a real click (~100 ms):
 the program must see them even while it computes a generation (~6 ms).
 */
 module life_tb;
 localparam DB = 50;                    // debounce cycles
-localparam [31:0] GEN_DONE_INSTR = 32'h235A0001;  // addi $k0, $k0, 1
+localparam [31:0] GEN_DONE_INSTR = 32'h275A0001;  // addi $k0, $k0, 1 (professor's addi = opcode 0x09)
 localparam PRESS = 200_000;            // cycles a key is held, and then released
 localparam TIMEOUT = 1_000_000;        // cycles per generation, much more than needed
 
@@ -46,7 +46,8 @@ reg [31:0] done_addr;
 reg board [0:767], prev [0:767], model [0:767];
 
 always @(posedge clk)
-    if (!reset && sys.cpu.PC_out == done_addr) gens = gens + 1;
+    // Each instruction enters EX exactly once (stalls send bubbles), so this counts once per generation
+    if (!reset && sys.cpu.ex_valid && sys.cpu.ex_pc == done_addr) gens = gens + 1;
 
 task wait_cycles(input integer k);
     repeat (k) @(posedge clk);
@@ -196,7 +197,7 @@ initial begin
     for (i = 0; i < 32; i = i + 1) sys.cpu.rf.registers[i] = 0;  // like the FPGA after power-up
     done_addr = 32'hFFFF_FFFF;
     for (i = 0; i < 4096; i = i + 1)
-        if (sys.cpu.im.read_word(i) === GEN_DONE_INSTR) done_addr = 32'h0040_0000 + 4 * i;
+        if (sys.cpu.if_id.im.read_word(i) === GEN_DONE_INSTR) done_addr = 32'h0000_0000 + 4 * i;
     if (done_addr == 32'hFFFF_FFFF) $fatal(1, "addi $k0, $k0, 1 not found in the program");
     $display("generation done at %h", done_addr);
 
