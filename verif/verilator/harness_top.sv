@@ -23,7 +23,7 @@
 // until the divider is done. Divide by zero prints nothing, like ref_sim.py (the hardware
 // still writes HI/LO, see mult_div.v).
 // The last line says why the run ended, like ref_sim.py:
-//   HALT: jumps to itself at 0x00000040  (steps=87028)
+//   HALT: jumps to itself at 0x00000040  (steps=87016)
 //   HALT: cause 2 (load) pc 0x... addr 0x...  (steps=N)
 //   HALT: reached +max-cycles N at PC=0x...  (steps=N)
 // steps = instructions that finished (nops too, bubbles not), the same count as ref_sim.py.

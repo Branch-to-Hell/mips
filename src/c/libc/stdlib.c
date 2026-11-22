@@ -144,3 +144,30 @@ char *getenv(const char *name)
     (void)name;
     return NULL;
 }
+
+int system(const char *command)
+{
+    (void)command;
+    return -1;                  /* no shell */
+}
+
+/* ---- sys/stat.h: no file system ---- */
+#include <sys/stat.h>
+int stat(const char *path, struct stat *buf) { (void)path; (void)buf; errno = ENOENT; return -1; }
+int mkdir(const char *path, mode_t mode) { (void)path; (void)mode; errno = ENOENT; return -1; }
+
+/* ---- math.h (soft float: clear the sign bit, no FPU instruction) ---- */
+#include <math.h>
+double fabs(double x)
+{
+    union { double d; unsigned long long u; } v = { x };
+    v.u &= ~(1ULL << 63);
+    return v.d;
+}
+
+float fabsf(float x)
+{
+    union { float f; unsigned u; } v = { x };
+    v.u &= ~(1u << 31);
+    return v.f;
+}

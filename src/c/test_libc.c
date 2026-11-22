@@ -215,6 +215,37 @@ static void test_realloc_in_place(void)
     check(74, realloc(NULL, 10) != NULL);
 }
 
+/* sscanf as Doom's M_StrToInt and m_config use it */
+static void test_sscanf(void)
+{
+    int v = 0, w = 0, n = 0;
+    char word[16];
+    check(80, sscanf(" 0x1F", " 0x%x", &v) == 1 && v == 31);
+    check(81, sscanf("017", " 0%o", &v) == 1 && v == 15);
+    check(82, sscanf("  -42", " %d", &v) == 1 && v == -42);
+    check(83, sscanf("123", " 0x%x", &v) == 0);             /* literal doesn't match: nothing */
+    check(84, sscanf("10 20", "%d %d", &v, &w) == 2 && v == 10 && w == 20);
+    check(85, sscanf("doom1.wad 7", "%s %i%n", word, &v, &n) == 2 && !strcmp(word, "doom1.wad") && v == 7 && n == 11);
+    check(86, sscanf("", "%d", &v) == EOF);
+}
+
+/* Read-only files in memory: how Doom will read its WAD from the SDRAM */
+static const char wad[] = "IWAD....directory";
+static void test_files(void)
+{
+    char buf[8];
+    check(90, fopen("doom1.wad", "rb") == NULL);            /* not registered yet */
+    check(91, __mem_file_add("doom1.wad", wad, sizeof wad - 1) == 0);
+    FILE *f = fopen("doom1.wad", "rb");
+    check(92, f != NULL && fopen("doom1.wad", "wb") == NULL);
+    check(93, fread(buf, 1, 4, f) == 4 && !memcmp(buf, "IWAD", 4) && ftell(f) == 4);
+    check(94, fseek(f, 0, SEEK_END) == 0 && ftell(f) == 17);
+    check(95, fseek(f, -9, SEEK_CUR) == 0 && fread(buf, 3, 3, f) == 3 && !memcmp(buf, "directory", 9));
+    check(96, fread(buf, 1, 4, f) == 0 && feof(f));
+    check(97, fseek(f, 8, SEEK_SET) == 0 && fread(buf, 4, 1, f) == 1 && !memcmp(buf, "dire", 4));
+    check(98, fclose(f) == 0 && fclose(stdout) == EOF && ftell(stdout) == -1);
+}
+
 int main(void)
 {
     test_memory();
@@ -222,6 +253,8 @@ int main(void)
     test_printf();
     test_malloc();
     test_realloc_in_place();
+    test_sscanf();
+    test_files();
 
     if (first_failure) {
         HEX = 0xBAD000 | first_failure;
