@@ -127,6 +127,7 @@ The professor asks for **one byte per address** and big-endian fetch: the word i
   - `instruction_memory` loads the 4 bank files with `$readmemh` from the prefix in `IMEM_INIT` (e.g. `"../mem/life_board"`), in ModelSim and in Quartus.
   - The assembler writes them from the ASM (TC-13), together with the word image `<name>.hex` and the data image `<name>_data.hex`. Everything goes to `hw/mem/` by default (or to the folder given with `-o`), never to `sw/programs/`. For a word `.hex` that does not come from our assembler (for example GNU as output), `sw/tools/hex2banks.py` makes the same files.
   - **No `.mif` files** for program images: `$readmemh` with `.hex` works the same in ModelSim and Quartus.
+  - **`.data` (TC-15):** `data_memory` loads `<name>_data.hex` (one word per line from `0x1001_0000`) through its `INIT_FILE` parameter, as the initial content of its RAM; the rest of the region starts at 0. `life_system` passes it as `DMEM_INIT`. `top_program` (Quartus revision `program`) runs any assembled program with its `.data`, picked in `program.qsf`, without touching the Game of Life build. The data is loaded at configuration time only: a reset does not restore it.
 
 ### Memory timing
 All memories read on a clock edge, so Quartus can place them in M9K blocks (a combinational read doesn't fit: 16 KB of flip-flops is more than the whole FPGA).
