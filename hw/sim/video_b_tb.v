@@ -2,7 +2,7 @@
 // PLT-6 test: life_system with MODE_B = 1 running test_mode_b.hex. Run from hw/sim: do video_b.do
 /* The CPU fills the screen and changes the palette (PLT-6 "done when"). Timer at
 100 cycles per ms and debounce of 50 cycles, so the program's 20 ms wait is short.
-The end of each palette update is when the CPU runs sw $s2, 0x1C($s0) (HEX = offset).
+The end of each palette update is the write to HEX (sw $s2, 0x1C($s0), HEX = offset), seen on the bus.
 Checks:
   1. after the first palette update (SW0 = 1, cycling stopped): VIDEO_MODE = 1, LEDR0 = 1,
      all 64,000 pixels are (x + y) mod 256, all 256 palette entries are ramp(i)
@@ -13,7 +13,6 @@ Checks:
   4. KEY0 press: VIDEO_MODE = 0, LEDR0 = 0, the VGA pins show mode A; another press: mode B
 */
 module video_b_tb;
-localparam [31:0] PAL_DONE_INSTR = 32'hAE12001C;   // sw $s2, 0x1C($s0)
 
 reg clk = 0, reset = 1;
 reg [9:0] SW = 10'b1;                  // SW0 = 1: cycling stopped
@@ -38,7 +37,8 @@ reg [7:0] p;
 reg [31:0] offset;
 
 always @(posedge clk)
-    if (!reset && sys.cpu.Instruction == PAL_DONE_INSTR) updates = updates + 1;
+    // The HEX write on the bus (MEM stage lasts one cycle), so the count doesn't depend on the CPU
+    if (!reset && sys.mem_we && sys.mem_addr == 32'hFFFF_001C) updates = updates + 1;
 
 task fail(input [8*48-1:0] what);
     begin

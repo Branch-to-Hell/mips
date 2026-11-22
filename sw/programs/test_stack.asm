@@ -65,23 +65,8 @@ main:
     lw   $t2, 0($s1)
     bne  $t2, $t1, fail         # and the data word holds its own value
 
-    addi $s0, $zero, 9          # test 9: 0x7FFFF000 (just above the stack) is not stack
-    addi $t0, $zero, 0x444      # same word index as 0x7FFFE000
-    sw   $t0, 4($s3)            # 0x7FFFEFFC + 4 = 0x7FFFF000: ignored
-    lw   $t2, 0($s2)
-    addi $t9, $zero, 0x111
-    bne  $t2, $t9, fail         # 0x7FFFE000 didn't change
-    lw   $t2, 4($s3)
-    bne  $t2, $zero, fail       # and nothing answers the read
-
-    addi $s0, $zero, 10         # test 10: 0x7FFFDFFC (just below the stack) is not stack
-    addi $t0, $zero, 0x555      # same word index as 0x7FFFEFFC
-    sw   $t0, -4($s2)           # 0x7FFFE000 - 4 = 0x7FFFDFFC: ignored
-    lw   $t2, 0($s3)
-    addi $t9, $zero, 0x222
-    bne  $t2, $t9, fail         # 0x7FFFEFFC didn't change
-    lw   $t2, -4($s2)
-    bne  $t2, $zero, fail       # and nothing answers the read
+    # Accesses just outside the stack (0x7FFFF000, 0x7FFFDFFC) used to be ignored. Since CPU-14
+    # they halt the CPU, so they are checked in test_halt.asm (halt_tb) instead.
     j    pass
 
 # f1: returns 100 + f2()
