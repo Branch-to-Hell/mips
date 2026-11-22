@@ -198,7 +198,7 @@ HALT: jumps to itself at 0x00000034  (steps=15)
 - **MARS:** *Settings → Delayed branching* **off**; *Memory Configuration → Default*; Bitmap Display: unit 4×4, display 512 wide, base address `0x10040000 (heap)`.
 - **Quartus (MAX 10):** configuration mode *"Single Uncompressed Image with Memory Initialization"* (required to initialize on-chip memory from the `.hex` images).
 - **Instruction RAM:** enable *In-System Memory Content Editor* on the 4 banks to load programs without recompiling.
-- **GCC:** `mips-linux-gnu-gcc` (package `gcc-mips-linux-gnu` in WSL) with `-march=mips1 -msoft-float -mno-abicalls -G0 -EB` (**big-endian**, TC-14).
+- **GCC:** `mips-linux-gnu-gcc` (package `gcc-mips-linux-gnu` in WSL) with `-march=mips1 -msoft-float -mno-abicalls -G0 -EB` (**big-endian**, TC-14). Startup code, linker script and ELF → `.hex`: `src/c/` (TC-9, see its README). Constants (`.rodata`) go to the data region: the instruction memory can't be read by loads.
 - **Assembler:** text base `0x00000000` by default; `--text-base 0x00400000` only to compare with MARS dumps.
 - **Website:** [Astro Starlight](https://starlight.astro.build) in `web/`. One Markdown page per topic in `web/src/content/docs/`; the sidebar is set in `web/astro.config.mjs`. Run `npm run build` from `web/` before opening a PR (it must pass). Vercel deploys with **Root Directory = `web`**: production from `main`, a preview URL for each PR.
 
