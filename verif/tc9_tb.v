@@ -9,7 +9,7 @@
   3. .bss was zeroed by crt0 (main checks it) and main's increment is in memory: frames = 1
   4. the pass protocol on the board: LEDR = 0x3FF and HEX = 0x00600D
 Saves verif/tc9.ppm (128x96, the framebuffer as the monitor shows it, scaled down 5x).
-Verilator (TC-7) will run the same image once the harness is in.
+Verilator (TC-7) runs the same image: make -C verif/verilator compare PROG=hello_pixels
 */
 module tc9_tb;
 parameter PROGRAM = "hello_pixels";

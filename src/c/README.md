@@ -61,4 +61,4 @@ vsim -c -do "do tc9.do; quit -f"
 
 Board: in `quartus/program.qsf` set the program to `hello_pixels` and compile the `program` revision.
 
-Verilator (TC-7): not yet; the harness will take the same `mem/` images.
+Verilator (TC-7), in WSL: `make -C verif/verilator compare PROG=hello_pixels` runs it and compares the trace with `ref_sim.py`; `build/verilator/mips_sim +program=mem/hello_pixels +ppm=hello.ppm` also saves the image (see `verif/verilator/README.md`).

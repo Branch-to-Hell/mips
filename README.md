@@ -43,6 +43,8 @@ Build a board image: open `quartus/mips.qpf`, pick the revision and compile. For
 
 Build the C programs (GCC, in WSL): `make -C src/c` (writes `mem/<name>*.hex` too, see [`src/c/README.md`](src/c/README.md)).
 
+Run a program in Verilator and compare its trace with the reference simulator (WSL): `make -C verif/verilator compare PROG=<name>` (see [`verif/verilator/README.md`](verif/verilator/README.md)).
+
 Run an unseen MARS program on our CPU (assembler, MARS and ModelSim, compared): `python src/tools/drill.py <program.asm>` (see [`docs/tc12_drill.md`](docs/tc12_drill.md)).
 
 More: [`src/assembler/README.md`](src/assembler/README.md) (assembler), [`docs/tc16/README.md`](docs/tc16/README.md) (how to reproduce every test).
