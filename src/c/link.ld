@@ -42,7 +42,8 @@ SECTIONS
         _bss_end = .;               /* crt0 zeroes [_bss_start, _bss_end) one word at a time */
     } > DATA
 
-    _data_end = .;                  /* first free byte of the data region (heap start, TC-10) */
+    _data_end = .;                  /* first free byte of the data region: the heap starts here (TC-10) */
+    _heap_end = ORIGIN(DATA) + LENGTH(DATA);    /* the heap is the rest of the data region (until SDRAM) */
     _stack_top = ORIGIN(STACK) + LENGTH(STACK);
 
     /* ELF bookkeeping that is not code or data */
