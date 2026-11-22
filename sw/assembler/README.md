@@ -16,16 +16,16 @@ Example: `python sw/assembler/assembler.py sw/programs/life_board.asm` rewrites 
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `-o <folder>`        | Write the files to `<folder>` instead of `hw/mem/` (created if missing).                                                                                  |
 | `--list`             | Print the listing (address, 32-bit word, instruction text) and the labels.                                                                                |
-| `--text-base <addr>` | Address of the first instruction. Default `0`, the initial PC the CPU uses. `0x00400000` is only for comparing with a MARS dump. Must be a multiple of 4. |
+| `--text-base <addr>` | Address of the first instruction. Default `0` (the professor's initial PC). `0x00400000` is only for comparing with a MARS dump. Must be a multiple of 4. |
 
 ## Output files
 
-Files go to `hw/mem/` by default, or to the `-o` folder. Nothing is written to `sw/programs/`. Every file has one value per line in lowercase hex, with no address and no header.
+Files go to `hw/mem/` by default, or to the `-o` folder. Nothing is written to `sw/programs/`. Every file has one value per line in lowercase hex, with no address and no header (read with `$readmemh`).
 
 | File                              | Content                                                                                                                                                      |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `<name>.hex`                      | Word image: one 32-bit instruction per line. This is the professor's loadable image; it is read with `$readmemh`.                                            |
-| `<name>_bytes.hex`                | One byte per address, big-endian: line _n_ is the byte at `text_base + n`.                                                                                   |
+| `<name>.hex`                      | Word image: one 32-bit instruction per line.                                            |
+| `<name>_bytes.hex`                | One byte per address, big-endian: line _n_ is the byte at `text_base + n`. This is the professor's loadable image.                                                                                   |
 | `<name>_b0.hex` … `<name>_b3.hex` | The 4 instruction memory banks (CPU-12). Bank _k_ holds the bytes with `addr[1:0] = k`, so line _i_ is one byte of instruction _i_. `_b0` holds bits 31..24. |
 | `<name>_data.hex`                 | `.data` segment, one word per line, starting at `0x10010000`. Only written if the program has `.data`.                                                       |
 
@@ -41,7 +41,7 @@ Files are written only if assembling succeeds. The text image is limited to 4096
 - Memory: `lw sw lb lbu lh lhu sb sh`
 - Jumps and branches: `j jal jr jalr beq bne blez bgtz bltz bgez`
 
-Encodings: `add` and `addu` emit funct `0x21`; `sub` and `subu` emit `0x23`; `addi` and `addiu` emit opcode `0x09`. These are the codes the professor asks for.
+Encodings: `add` and `addu` emit funct `0x21`; `sub` and `subu` emit `0x23`; `addi` and `addiu` emit opcode `0x09`. These are the codes the professor asks for. The hardware accepts both codes (see `docs/contracts.md`).
 
 **Pseudo-instructions**
 
@@ -53,7 +53,7 @@ Encodings: `add` and `addu` emit funct `0x21`; `sub` and `subu` emit `0x23`; `ad
 **Directives**
 
 - `.text`, `.data`
-- `.word `
+- `.word v1, v2, ...`
 - `.space n` (rounded up to whole words)
 - `.globl` and `.align` are accepted and ignored.
 
@@ -153,7 +153,7 @@ These differences are expected. They do not change the result of the program.
 
 - `li` with a large value and `la` expand to `lui` + `ori` using the destination register. MARS uses `$at` as the intermediate register.
 - `move rd, rs` becomes `add rd, rs, $zero`. MARS uses `addu rd, $zero, rs`.
-- `add`, `sub` and `addi` use the professor's codes (`0x21`, `0x23`, `0x09`). MARS uses `0x20`, `0x22` and `0x08`.
+- `add`, `sub` and `addi` use the professor's codes (`0x21`, `0x23`, `0x09`). MARS uses `0x20`, `0x22` and `0x08`. So for these three, a word-by-word comparison with a MARS dump never matches.
 - The assembler inserts one `nop` after every jump and branch (the delay slot). MARS does not insert it.
 - Labels and addresses that come after an inserted `nop` have different values than in MARS.
 
