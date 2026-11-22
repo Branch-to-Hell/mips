@@ -31,7 +31,7 @@ make -C verif/verilator compare PROG=<name>       # diff against ref_sim.py, pri
 - `+max-cycles=N`: stop after N clock cycles (default 10,000,000).
 - `+ppm=file.ppm`: save framebuffer A (128×96) at the end.
 
-stdout is only the trace; the cycle count goes to stderr (`mips_sim: 124970 cycles, 87028 instructions`).
+stdout is only the trace; the cycle count goes to stderr (`mips_sim: 124952 cycles, 87016 instructions`).
 
 ## Trace
 
@@ -39,7 +39,7 @@ stdout is only the trace; the cycle count goes to stderr (`mips_sim: 124970 cycl
 PC=0x00000000 R29 <= 0x80000000
 PC=0x00000004 R29 <= 0x7FFFEFF0
 ...
-HALT: jumps to itself at 0x00000040  (steps=87028)
+HALT: jumps to itself at 0x00000040  (steps=87016)
 ```
 
 - A line is printed when the register file writes, at the end of WB, so the lines are in program order. The PC is the instruction's own PC: MEM/WB has no PC field, but it is always enabled, so the harness takes the PC that was in EX/MEM one cycle before.
@@ -63,10 +63,10 @@ make -C verif/verilator compare-ext PROG=tc4_rtype FETCH=6 STALL=20  # fetch eve
 - `compare-ext` assembles `src/programs/<PROG>.asm` with `--text-base 0x20000000` into `build/verilator/ext/` and runs it on `mips_sim_ext`, which starts at `0x2000_0000`: every instruction comes through the CPU's external fetch port from a memory in the harness, each new address after 1 to `FETCH`+1 cycles (`+fetch_delay=N`). `ref_sim.py` runs the same image with `--text-base 0x20000000`.
 - `SEED=<S>` makes a run repeatable (`+seed=S`).
 
-Checked on Nov 22: `compare` with STALL 10/30/60 for `tc4_rtype tc4_memory tc5_load_use tc5_branch_hazards tc5_jump_hazards count_value_in1 test_stack test_halt hello_pixels test_libc test_bus`, and `compare-ext` with FETCH 0/3/6 (and STALL 30) for every `tc4_*`, `tc5_*`, `count_value_in1/2`, `test_stack`, `test_pseudo`, `test_halt`: all the same trace. `test_libc` takes 122k cycles without waits and 301k with STALL=60, for the same 79,400 instructions.
+Checked on Nov 22: `compare` with STALL 10/30/60 for `tc4_rtype tc4_memory tc5_load_use tc5_branch_hazards tc5_jump_hazards count_value_in1 test_stack test_halt hello_pixels test_libc test_bus`, and `compare-ext` with FETCH 0/3/6 (and STALL 30) for every `tc4_*`, `tc5_*`, `count_value_in1/2`, `test_stack`, `test_pseudo`, `test_halt`: all the same trace. `test_libc` takes 128k cycles without waits and 315k with STALL=60, for the same 83,050 instructions.
 
 ## What is checked (Nov 22)
 
-`compare` passes for every program in `mem/` that ends: the TC-4, TC-5, TC-15 and TC-16 programs, the drills, `test_*`, the C programs `hello_pixels` (62,332 writes), `test_libc` (43,191, HI/LO included) and `test_bus`, and the GNU as ISA tests `cpu7_isa` and `cpu8_muldiv` (CPU-7, CPU-8). `test_halt` and `test_bus` end with the same CPU-14 halt line.
+`compare` passes for every program in `mem/` that ends: the TC-4, TC-5, TC-15 and TC-16 programs, the drills, `test_*`, the C programs `hello_pixels` (62,329 writes), `test_libc` (45,277, HI/LO included) and `test_bus`, and the GNU as ISA tests `cpu7_isa` and `cpu8_muldiv` (CPU-7, CPU-8). `test_halt` and `test_bus` end with the same CPU-14 halt line.
 
 Programs that never end (`life_board`, `test_mmio`, `test_mode_b`, `test_timer`) give the same trace as far as both run, except where they read the timer: `ref_sim.py` treats MMIO as RAM, while the hardware timer counts. Switches and keys read 0 (released) in both.

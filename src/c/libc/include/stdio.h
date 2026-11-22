@@ -4,7 +4,9 @@
    Output (printf, puts, putchar, fprintf to stdout/stderr) goes through __putchar, which
    does nothing by default: "printf to nothing". A program can define its own
    void __putchar(int c) to send the characters somewhere (it replaces the default).
-   No files yet: fopen returns NULL (the WAD comes from SDRAM, DOOM tasks). */
+   Files: no file system. A program registers read-only files in memory with __mem_file_add
+   (e.g. the WAD in the SDRAM) and reads them with fopen(name, "rb"), fread, fseek, ftell.
+   sscanf reads integers (%d %i %u %x %o), %s, %c and %n. */
 #ifndef _STDIO_H
 #define _STDIO_H
 
@@ -38,9 +40,18 @@ int putc(int c, FILE *f);
 int fputs(const char *s, FILE *f);
 int fflush(FILE *f);
 
-FILE *fopen(const char *path, const char *mode);    /* always NULL for now */
+int __mem_file_add(const char *name, const void *data, long size);   /* 0, or -1 if full (4 files) */
+FILE *fopen(const char *path, const char *mode);    /* read only, registered names only */
 int fclose(FILE *f);
 size_t fread(void *buf, size_t size, size_t count, FILE *f);
-size_t fwrite(const void *buf, size_t size, size_t count, FILE *f);
+size_t fwrite(const void *buf, size_t size, size_t count, FILE *f);   /* stdout/stderr only */
+int fseek(FILE *f, long offset, int whence);
+long ftell(FILE *f);
+int feof(FILE *f);
+int remove(const char *path);                       /* always -1: no file system */
+int rename(const char *from, const char *to);       /* always -1 */
+
+int sscanf(const char *str, const char *fmt, ...);
+int vsscanf(const char *str, const char *fmt, va_list ap);
 
 #endif

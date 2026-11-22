@@ -12,7 +12,7 @@ The four folders the professor asks for:
 | [`rtl/`](rtl/) | All the Verilog: the CPU (`mips_pipeline.v` and its modules, the single-cycle `mips_cpu.v`), memories, MMIO, VGA and the board top-levels (`top_*.v`) |
 | [`verif/`](verif/) | Testbenches (`*_tb.v`) and their ModelSim scripts (`*.do`). [`verif/traces/`](verif/traces/): the annotated R, I and J traces (TC-16). [`verif/results/`](verif/results/): expected vs observed results |
 | [`docs/`](docs/) | Plan, workflow, technical contracts, test coverage (`tc16/`), the graded algorithm (`tc15_algorithm.md`), lab checklists and [`docs/evidence/`](docs/evidence/) (board photos and videos, individual sheets) |
-| [`src/`](src/) | Everything that is not Verilog: [`src/assembler/`](src/assembler/) (our assembler), [`src/programs/`](src/programs/) (assembly programs), [`src/c/`](src/c/) (C programs: GCC setup, `crt0.S`, linker script), [`src/tools/`](src/tools/) (reference simulator, professor drill, converters), `src/doom/` |
+| [`src/`](src/) | Everything that is not Verilog: [`src/assembler/`](src/assembler/) (our assembler), [`src/programs/`](src/programs/) (assembly programs), [`src/c/`](src/c/) (C programs: GCC setup, `crt0.S`, linker script), [`src/tools/`](src/tools/) (reference simulator, professor drill, converters), [`src/doom/`](src/doom/) (Doom for our CPU) |
 
 Three extra folders that don't fit those four:
 
@@ -102,3 +102,5 @@ Which test covers each instruction and case, and the results: [`docs/tc16/README
 ## C programs
 
 `make -C src/c` (WSL) builds every C program in `src/c/` with GCC and our minimal C library, and writes the same `mem/<name>*.hex` images, so steps 4 and 5 are the same. See [`src/c/README.md`](src/c/README.md).
+
+`make -C src/doom` (WSL) builds Doom for the SDRAM region. See [`src/doom/README.md`](src/doom/README.md).
