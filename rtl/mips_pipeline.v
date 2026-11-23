@@ -61,6 +61,9 @@ module mips_pipeline #(
     output ifetch_req,
     input [31:0] ifetch_data,
     input ifetch_ready,
+    // PLT-12: the address fetch_pc (ifetch_addr) will hold after this edge, so the
+    // instruction cache reads its RAM one cycle early and answers a hit in the same cycle
+    output [31:0] ifetch_next,
     output reg halted,             // 1 = stopped by a halt; only reset clears it
     output reg [1:0] halt_cause,   // 1 = fetch, 2 = load, 3 = store (0 = running)
     output reg [31:0] halt_pc,     // PC of the instruction that failed
@@ -108,6 +111,7 @@ endfunction
 wire fetch_ext = in_ext_text(fetch_pc);
 assign fetch_ready = !fetch_ext || ifetch_ready;
 assign ifetch_addr = fetch_pc;
+assign ifetch_next = reset ? RESET_PC : if_id_enable ? next_fetch_pc : fetch_pc;
 assign ifetch_req = fetch_ext && !stop;
 // IF/ID: 64 payload + 1 valid = 65 bits. Detailed reset/enable/update behavior
 // is in if_id_register.v; RAM output and saved PC update on the same edge.
