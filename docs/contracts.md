@@ -208,7 +208,7 @@ Doom's code doesn't fit on chip: built with our flags it is 367 KB of code and c
 | On-chip text | `0x0000_0000` | Boot code (`src/doom/boot.S`): waits for KEY0, so the image and the WAD can be loaded over JTAG first, then `jr` to `0x2000_0000` |
 | SDRAM + `0x0000_0000` | `0x2000_0000` | The Doom image: `.text`, `.rodata`, `.data` (loaded over JTAG like the WAD), then `.bss` (zeroed by Doom's `crt0`) |
 | SDRAM, after `.bss` | up to `0x22FF_FFFF` | Heap (`sbrk`/`malloc`): the zone and the rest, ~47 MB. `_heap_end` = `0x2300_0000` |
-| SDRAM + `0x0300_0000` | `0x2300_0000` – `0x23FF_FFFF` | The WAD (16 MB, `wad_load.tcl`'s default offset) |
+| SDRAM + `0x0300_0000` | `0x2300_0000` – `0x23FF_FFFF` | The WAD (16 MB, `wad_load.tcl`'s default offset). Only the file is loaded, no size word: `main` finds its size from the WAD's own header and directory (DOOM-3, `src/doom/wad_mem.c`) and registers it as the file `doom1.wad`. If there is no valid IWAD there, all LEDs on, HEX `bAd1Ad`, and Doom doesn't start |
 | On-chip data region | `0x1001_0000` – `0x1001_3FFF` | Doom's **stack**, top `0x1001_3FF0`: 1-cycle access instead of ~7. An overflow goes below `0x1001_0000`, outside every region, and halts visibly (CPU-14) |
 
 - The SDRAM is one 256 MB region for `j`/`jal` (`PC[31:28] = 2`), so they reach any Doom function; only the boot code needs `jr`.

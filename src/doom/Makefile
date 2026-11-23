@@ -6,6 +6,10 @@
 #                                      src/tools/wad_load.tcl (the WAD goes at 0x0300_0000)
 #   build/doom/doom_sdram.hex          the same image, one word per line, for the simulation
 #   mem/doom_boot*.hex                 boot.S for the on-chip text (top_doom)
+# DOOM-1, the same Doom on the PC without a window (reference frames for DOOM-6/7):
+#     make -C src/doom host-run [WAD=build/wad/doom1.wad] [FRAMES=40]
+#   build/doom/host/doom_host           native build (gcc), src/doom/host/doomgeneric_host.c
+#   build/doom/host/frame_NNN.ppm       the first FRAMES frames, palette applied
 # Memory map and build flags: docs/contracts.md "Doom memory" and "Tool settings".
 
 CROSS   ?= mips-linux-gnu-
@@ -33,16 +37,16 @@ LDFLAGS := $(ARCH) -nostdlib -nostartfiles -static -Wl,--gc-sections \
            -Wl,--build-id=none -Wl,--no-warn-rwx-segments
 
 DOOM_SRCS := $(wildcard $(DG)/*.c)
-OBJS := $(patsubst $(DG)/%.c,$(BUILD)/dg/%.o,$(DOOM_SRCS)) $(BUILD)/doomgeneric_mips.o
+OBJS := $(patsubst $(DG)/%.c,$(BUILD)/dg/%.o,$(DOOM_SRCS)) $(BUILD)/doomgeneric_mips.o $(BUILD)/wad_mem.o
 
-.PHONY: all clean
+.PHONY: all clean host host-run
 all: $(BUILD)/doom.bin $(MEM)/doom_boot.hex
 
 $(BUILD)/dg/%.o: $(DG)/%.c
 	@mkdir -p $(BUILD)/dg
 	$(CC) $(CFLAGS) $(DOOM_WARN) -c $< -o $@
 
-$(BUILD)/doomgeneric_mips.o: doomgeneric_mips.c
+$(BUILD)/doomgeneric_mips.o $(BUILD)/wad_mem.o: $(BUILD)/%.o: %.c
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -Wall -Wextra -c $< -o $@
 
@@ -72,7 +76,36 @@ $(BUILD)/doom_boot.elf: $(BUILD)/boot.o
 $(MEM)/doom_boot.hex: $(BUILD)/doom_boot.elf $(ROOT)/src/tools/elf2hex.py
 	$(PYTHON) $(ROOT)/src/tools/elf2hex.py $< -o $(MEM) --isa
 
+# ---- DOOM-1: host build (native gcc, same sources and defines, files and time like on the MIPS) ----
+HOST_CC     ?= gcc
+HOST        := $(BUILD)/host
+HOST_CFLAGS := -O2 -g $(DOOM_DEFS) -I$(DG) -I. -MMD -MP
+HOST_OBJS   := $(patsubst $(DG)/%.c,$(HOST)/dg/%.o,$(DOOM_SRCS)) $(HOST)/doomgeneric_host.o $(HOST)/wad_mem.o
+WAD         ?= $(ROOT)/build/wad/doom1.wad
+FRAMES      ?= 40
+
+host: $(HOST)/doom_host
+
+$(HOST)/dg/%.o: $(DG)/%.c host/host_files.h
+	@mkdir -p $(HOST)/dg
+	$(HOST_CC) $(HOST_CFLAGS) $(DOOM_WARN) -include host/host_files.h -c $< -o $@
+
+$(HOST)/doomgeneric_host.o: host/doomgeneric_host.c
+	@mkdir -p $(HOST)
+	$(HOST_CC) $(HOST_CFLAGS) -Wall -Wextra -c $< -o $@
+
+$(HOST)/wad_mem.o: wad_mem.c
+	@mkdir -p $(HOST)
+	$(HOST_CC) $(HOST_CFLAGS) -Wall -Wextra -c $< -o $@
+
+$(HOST)/doom_host: $(HOST_OBJS)
+	$(HOST_CC) $^ -lm -o $@
+
+host-run: $(HOST)/doom_host
+	rm -f $(HOST)/frame_*.ppm
+	cd $(HOST) && ./doom_host $(abspath $(WAD)) . $(FRAMES)
+
 clean:
 	rm -rf $(BUILD)
 
--include $(wildcard $(BUILD)/*.d $(BUILD)/dg/*.d)
+-include $(wildcard $(BUILD)/*.d $(BUILD)/dg/*.d $(HOST)/*.d $(HOST)/dg/*.d)
