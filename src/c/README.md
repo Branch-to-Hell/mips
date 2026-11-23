@@ -9,7 +9,8 @@ C code for our CPU, compiled with GCC and our minimal C library (`libc/`). Each 
 | `Makefile` | Builds `libc.a`, compiles, links, writes the disassembly (`.lst`) and runs `src/tools/elf2hex.py` |
 | `libc/` | Our minimal C library (TC-10), see [below](#c-library-tc-10) |
 | `hello_pixels.c` | First C program: paints a gradient on framebuffer A and writes the pass code (LEDR = `0x3FF`, HEX = `0x00600D`) |
-| `test_libc.c` | Tests of the C library (TC-10): memory and string functions, `snprintf`/`printf`, `malloc`/`free`/`realloc`/`calloc`, `sbrk`. Same pass code; on a failure HEX = `0xBAD0nn` and `main` returns `nn`, the number of the first failed check |
+| `test_bus.c` | CPU-7 byte lanes on every device: `sb`/`sh`/`lb`/`lbu`/`lh` in data, stack, MMIO and framebuffer B; at the end an `sb` to framebuffer A, which must halt (cause 3) |
+| `test_libc.c` | Tests of the C library (TC-10): memory and string functions, `snprintf`/`printf`, `malloc`/`free`/`realloc`/`calloc`, `sbrk`, `sscanf`, files in memory. Same pass code; on a failure HEX = `0xBAD0nn` and `main` returns `nn`, the number of the first failed check |
 
 ## Build
 
@@ -38,15 +39,11 @@ The CPU is Harvard: a `lw` can't read the instruction memory (it halts, CPU-14).
 
 The heap goes from `_data_end` (the end of `.bss`) to `_heap_end` (the end of the data region, `0x1001_4000`), both from `link.ld`: about 15 KB minus the program's data. It moves to SDRAM with Doom (PLT-8).
 
-## Phase 1 CPU: `--phase1`
+## ISA
 
-`mips_pipeline` only runs the phase 1 ISA until CPU-7 and CPU-8 are merged. The Makefile runs `elf2hex.py --phase1`, which fails and lists the address of each instruction outside phase 1 (`sltu`, `lbu`, `sb`, `multu`, `mfhi`, `jalr`, …). Ways around it while they're missing:
-- No `/`, `%` or `*` by a non-power-of-2 (GCC uses `mult`/`multu`/`div`), use shifts and masks.
-- `unsigned` comparisons (`<`) use `sltu`: prefer `!=` in loops, or `int`.
-- `char`/`short` arrays use `lb`/`lbu`/`sb`: use `int`/`unsigned` arrays.
-- Calls through function pointers use `jalr`.
+`mips_pipeline` runs the whole MIPS I integer set (CPU-7, CPU-8), so GCC's output runs as it is: byte and half loads/stores, `sltu`, `mult`/`div`, `jalr`, branches against zero. `lwl`/`lwr`/`swl`/`swr` are not implemented: GCC only uses them for unaligned data (packed structs), so check the `.lst` for them.
 
-Programs listed in `PHASE2_PROGRAMS` in the Makefile skip the check: they run in `ref_sim.py` (which runs the whole ISA) until CPU-7 and CPU-8 are in. **Any program that uses the C library is phase 2** (byte loads and stores, `divu` in `printf`, `sltu`), so add it there. To build everything without the check: `make -C src/c ELF2HEX_FLAGS=`. Drop the flag from the Makefile once CPU-7 and CPU-8 are in.
+The Makefile runs `elf2hex.py --isa`: the build fails, listing addresses, if the code has any instruction our CPU doesn't run (`lwl`/`lwr`, FPU, MIPS32 such as `mul` or `clz`, traps such as `teq`). That is what keeps `libgcc.a` out (see "Software floating point and 64-bit division" below). The single-cycle `mips_cpu` stays phase 1: `make -C src/c ELF2HEX_FLAGS=--phase1` lists what it couldn't run.
 
 ## Run
 
@@ -64,11 +61,12 @@ vsim -c -do "do tc9.do; quit -f"
 
 Board: in `quartus/program.qsf` set the program to `hello_pixels` and compile the `program` revision.
 
-C library tests (in `ref_sim.py` until CPU-7/CPU-8):
+C library and bus tests, on the CPU (Verilator) against the reference simulator:
 ```
-python src/tools/ref_sim.py mem/test_libc.hex --dump-regs --dump-mem 0xFFFF001C:1
+make -C verif/verilator compare PROG=test_libc     # PASS: 45277 register writes, same trace
+make -C verif/verilator compare PROG=test_bus      # PASS: 178 register writes, same trace
 ```
-Pass: `R2 = 0x00000000` and `MEM[0xFFFF001C] = 0x0000600D` (`ref_sim.py` treats MMIO as RAM, so HEX is readable there).
+`test_libc` ends with `main` returning 0 (`HALT: jumps to itself at 0x00000040`). `test_bus` ends with the CPU-14 halt of its last store, `HALT: cause 3 (store) pc 0x000003AC addr 0x10040003`, the same line in both. To see a failure number in `ref_sim.py`: `--dump-regs --dump-mem 0xFFFF001C:1` (`R2` = `main`'s return value, `ref_sim.py` treats MMIO as RAM so HEX is readable there).
 
 Verilator (TC-7), in WSL: `make -C verif/verilator compare PROG=hello_pixels` runs it and compares the trace with `ref_sim.py`; `build/verilator/mips_sim +program=mem/hello_pixels +ppm=hello.ppm` also saves the image (see `verif/verilator/README.md`).
 
@@ -79,14 +77,30 @@ Our own, small, in `libc/` (decided on Nov 22 instead of newlib/picolibc: there 
 | Header | What there is |
 |---|---|
 | `string.h`, `strings.h` | `memcpy memmove memset memcmp memchr strlen strnlen strcpy strncpy strcat strncat strcmp strncmp strchr strrchr strstr strdup strcasecmp strncasecmp strerror`. `memcpy`/`memmove`/`memset` copy whole words when the pointers are word aligned |
-| `stdlib.h` | `malloc free calloc realloc`, `atoi atol strtol strtoul abs labs rand srand qsort getenv`, `exit`/`abort` |
-| `stdio.h` | `printf fprintf vprintf vfprintf sprintf snprintf vsprintf vsnprintf putchar puts fputc putc fputs fflush`; `fopen` (always `NULL`), `fclose fread fwrite` |
+| `stdlib.h` | `malloc free calloc realloc`, `atoi atol strtol strtoul abs labs rand srand qsort getenv system`, `exit`/`abort` |
+| `stdio.h` | `printf fprintf vprintf vfprintf sprintf snprintf vsprintf vsnprintf putchar puts fputc putc fputs fflush`, `sscanf vsscanf`; files in memory: `__mem_file_add fopen fclose fread fseek ftell feof`; `fwrite` (stdout/stderr), `remove rename` (always fail) |
 | `unistd.h` | `sbrk` |
-| `ctype.h`, `errno.h`, `assert.h`, `limits.h` | ASCII `is*`/`toupper`/`tolower`, `errno`, `assert` (calls `abort`), the integer limits |
+| `ctype.h`, `errno.h`, `assert.h`, `limits.h`, `inttypes.h` | ASCII `is*`/`toupper`/`tolower`, `errno`, `assert` (calls `abort`), the integer limits, the `PRI*` macros |
+| `math.h`, `sys/stat.h`, `sys/types.h`, `fcntl.h` | `fabs fabsf`; `stat mkdir` (always fail); the types and flags Doom includes |
 
 - **`printf` goes to nothing**: every character goes through `__putchar(int c)`, which does nothing. A program that defines its own `void __putchar(int c)` gets the output (MMIO, a buffer, …), like `test_libc.c` does.
 - **Formats**: `%d %i %u %x %X %o %c %s %p %%`, flags `- 0 + space #`, width and precision (also `*`), lengths `h l z`. No `%ll` and no floating point: `%f %e %g` print `?`.
 - **`malloc`**: first fit over the blocks in address order, 8-byte header and 8-byte aligned payloads, free blocks join with the free ones after them, blocks are split when the rest is big enough. It grows the heap with `sbrk`; use `malloc` or `sbrk` in a program, not both. Out of memory: `NULL` (and `errno = ENOMEM` from `sbrk`).
 - **`exit(status)`** and `abort()` end like `main` returning: `$v0` = status and a self-jump (`abort` = 134).
-- **Size**: about 10 KB of code and constants if everything is linked (`printf` alone is ~3 KB). `test_libc` uses about 14 KB of the 16 KB text region.
+- **Files**: there is no file system. `__mem_file_add(name, data, size)` registers a read-only block of memory under a name (up to 4), and `fopen(name, "rb")` + `fread`/`fseek`/`ftell` read it (up to 8 open at once). Doom's WAD in the SDRAM is meant to be registered this way (DOOM-3). Opening anything else, or for writing, returns `NULL`.
+- **`sscanf`**: whitespace, literal characters, `%d %i %u %x %X %o`, `%s`, `%c`, `%n`, `*` to skip; no floating point.
+
+### Software floating point and 64-bit division
+
+`libgcc.a` of the cross compiler can't be used: it is built for a MIPS32 CPU with an FPU. Its `__subsf3` is one `sub.s` (an FPU instruction) and its `__divdi3` uses `clz` (MIPS32); our CPU would run them as `nop` and give wrong results without any error. So the helpers GCC calls live in our library, linked before `-lgcc`:
+- `softfloat.c`: `__addsf3 __subsf3 __mulsf3 __divsf3 __floatsisf __fixsfsi __extendsfdf2 __ltdf2` (what Doom calls), IEEE 754 single precision, round to nearest even, subnormals, infinities and NaN, with only integer operations (the algorithms of Berkeley SoftFloat 3).
+- `divdi3.c`: `__divdi3 __udivdi3 __moddi3 __umoddi3` (`long long` `/` and `%`, Doom's `FixedDiv`): one `divu` when both fit in 32 bits, binary long division otherwise.
+
+Both are checked on the PC against its own FPU and 64-bit division, bit by bit, on millions of random values (special values, subnormals and ties included). From the repo root, in WSL:
+```
+gcc -O2 -o build/softfloat_test src/c/libc/test/softfloat_test.c && build/softfloat_test   # PASS: 16000000 checks
+gcc -O2 -o build/divdi3_test src/c/libc/test/divdi3_test.c && build/divdi3_test           # PASS: 11962232 checks
+```
+If a program needs another helper (`__adddf3`, `__floatunsisf`, …), `--isa` stops the build when the `libgcc.a` one gets linked: add it to `softfloat.c` and to the test.
+- **Size**: programs are compiled with `-ffunction-sections` and linked with `--gc-sections`, so only the functions a program calls are in its image (`printf` alone is ~3 KB). `test_libc` uses about 15 KB of the 16 KB text region.
 - The library is compiled with `-fno-tree-loop-distribute-patterns`, so GCC doesn't turn the loop in `memset` into a call to `memset`.

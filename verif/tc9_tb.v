@@ -25,7 +25,7 @@ wire [7:0] HEX0, HEX1, HEX2, HEX3, HEX4, HEX5;
 wire [3:0] VGA_R, VGA_G, VGA_B;
 wire VGA_HS, VGA_VS;
 
-life_system #(.IMEM_INIT({"../mem/", PROGRAM}), .DMEM_INIT({"../mem/", PROGRAM, "_data.hex"}),
+life_system #(.IMEM_INIT({"../mem/", PROGRAM}), .DMEM_INIT({"../mem/", PROGRAM, "_data"}),
               .DEBOUNCE_CYCLES(50)) sys (
     .clk(clk), .reset(reset), .SW(SW), .KEY(KEY), .LEDR(LEDR),
     .HEX0(HEX0), .HEX1(HEX1), .HEX2(HEX2), .HEX3(HEX3), .HEX4(HEX4), .HEX5(HEX5),
@@ -87,8 +87,8 @@ initial begin
     $fclose(f);
 
     // 3. .bss
-    if (sys.dm.mem[FRAMES_WORD] !== 32'd1) begin
-        $display("FAIL  frames (.bss) = %h, expected 1", sys.dm.mem[FRAMES_WORD]);
+    if (sys.dm.word(FRAMES_WORD) !== 32'd1) begin
+        $display("FAIL  frames (.bss) = %h, expected 1", sys.dm.word(FRAMES_WORD));
         errors = errors + 1;
     end
 

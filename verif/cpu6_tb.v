@@ -16,7 +16,7 @@ integer path [0:63];
 integer path_len = 0;
 
 mips_pipeline dut(.clk(clk), .reset(reset), .mem_addr(mem_addr), .mem_wdata(mem_wdata),
-    .mem_we(mem_we), .mem_re(mem_re), .mem_rdata(32'd0), .mem_fault(1'b0), .dbg_sel(5'd0), .dbg_value());
+    .mem_we(mem_we), .mem_re(mem_re), .mem_rdata(32'd0), .mem_fault(1'b0), .mem_stall(1'b0), .ifetch_addr(), .ifetch_req(), .ifetch_data(32'd0), .ifetch_ready(1'b0), .dbg_sel(5'd0), .dbg_value());
 always #5 clk = ~clk;
 
 // Encoders (word index i lives at byte address 4 * i).

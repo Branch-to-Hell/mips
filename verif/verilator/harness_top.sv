@@ -4,29 +4,72 @@
 //
 // Plusargs (sim_main.cpp passes the command line):
 //   +program=<prefix>    e.g. mem/hello_pixels: loads <prefix>_b0..b3.hex into the instruction
-//                        banks and <prefix>_data.hex (if it exists) into the data memory
+//                        banks and <prefix>_data_b0..b3.hex (if they exist) into the data memory
 //   +max-cycles=<N>      stop after N clock cycles (default 10,000,000)
 //   +ppm=<file>          at the end, save framebuffer A (128x96) as a PPM image
+//   CPU-9 (the trace must not change):
+//   +stall=<P>           raise mem_stall in P% of the cycles, at random (default 0)
+//   +fetch_delay=<N>     external fetches (mips_sim_ext) take 1 to N+1 cycles, at random (default 0)
+//   +seed=<S>            seed for both (default 1)
+// mips_sim_ext (EXT_START = 1) starts at 0x2000_0000 and fetches every instruction through the
+// CPU's external fetch port, from <prefix>.hex in a memory of the harness: assemble the program
+// with --text-base 0x20000000.
 //
 // Trace, one line per register write, in program order (they happen in WB):
 //   PC=0x00000050 R2 <= 0x00000000
+//   PC=0x00000060 HI <= 0x00000000     mult multu div divu print HI then LO, mthi/mtlo one line
+// HI/LO lines go out when the instruction reaches WB, in its place. A divide takes 32 cycles
+// more while the pipeline keeps going, so its lines wait in a queue (and the lines after it)
+// until the divider is done. Divide by zero prints nothing, like ref_sim.py (the hardware
+// still writes HI/LO, see mult_div.v).
 // The last line says why the run ended, like ref_sim.py:
-//   HALT: jumps to itself at 0x00000040  (steps=87028)
+//   HALT: jumps to itself at 0x00000040  (steps=87016)
 //   HALT: cause 2 (load) pc 0x... addr 0x...  (steps=N)
 //   HALT: reached +max-cycles N at PC=0x...  (steps=N)
 // steps = instructions that finished (nops too, bubbles not), the same count as ref_sim.py.
 // Cycles go to stderr, so stdout is only the trace.
-module harness_top (
+module harness_top #(
+    parameter EXT_START = 0   // 1 = mips_sim_ext: run from 0x2000_0000 through the external fetch port
+)(
     input clk,
     input reset,
     output logic done = 0   // the run ended; sim_main.cpp stops (no $finish: its message would go to stdout)
 );
 
-life_system #(.MODE_B(1), .DEBOUNCE_CYCLES(50)) sys (
+localparam [31:0] EXT_BASE = 32'h2000_0000;
+localparam EXT_WORDS = 65536;             // 256 KB of external text for the tests
+
+logic ext_stall = 0;
+logic [31:0] ifetch_addr, ifetch_data;
+logic ifetch_req, ifetch_ready;
+
+life_system #(.MODE_B(1), .DEBOUNCE_CYCLES(50), .EXT_BUS(1),
+              .RESET_PC(EXT_START ? EXT_BASE : 32'h0)) sys (
     .clk(clk), .reset(reset), .SW(10'd0), .KEY(2'b11), .LEDR(),
     .HEX0(), .HEX1(), .HEX2(), .HEX3(), .HEX4(), .HEX5(),
-    .VGA_R(), .VGA_G(), .VGA_B(), .VGA_HS(), .VGA_VS()
+    .VGA_R(), .VGA_G(), .VGA_B(), .VGA_HS(), .VGA_VS(),
+    .bus_addr(), .bus_wdata(), .bus_we(), .bus_re(), .bus_be(), .ext_sel(),
+    .ext_rdata(32'd0), .ext_stall(ext_stall),
+    .ifetch_addr(ifetch_addr), .ifetch_req(ifetch_req),
+    .ifetch_data(ifetch_data), .ifetch_ready(ifetch_ready)
 );
+
+// ---- CPU-9: random waits ----
+int stall_pct = 0, fetch_delay = 0, seed = 1;
+logic [31:0] ext_text [0:EXT_WORDS-1];
+logic [31:0] fetch_last = 32'hFFFF_FFFF;
+int fetch_count = 0;
+// Ready once the address has stayed the same for its random delay; stays ready while it does
+assign ifetch_ready = ifetch_req && ifetch_addr == fetch_last && fetch_count == 0;
+assign ifetch_data = ext_text[ifetch_addr[17:2]];
+always @(posedge clk) begin
+    ext_stall <= stall_pct > 0 && ($urandom % 100) < stall_pct;
+    if (!ifetch_req || ifetch_addr != fetch_last) begin
+        fetch_last <= ifetch_req ? ifetch_addr : 32'hFFFF_FFFF;
+        fetch_count <= fetch_delay > 0 ? $urandom % (fetch_delay + 1) : 0;
+    end else if (fetch_count > 0)
+        fetch_count <= fetch_count - 1;
+end
 
 // ---- loading: once, on the first clock edge in reset ----
 // (not in an initial block: data_memory's own initial zeroes its RAM, and the order of
@@ -41,6 +84,10 @@ initial begin
         $fatal(1, "Usage: mips_sim +program=mem/<name> [+max-cycles=N] [+ppm=file.ppm]");
     void'($value$plusargs("max-cycles=%d", max_cycles));
     if (!$value$plusargs("ppm=%s", ppm_file)) ppm_file = "";
+    void'($value$plusargs("stall=%d", stall_pct));
+    void'($value$plusargs("fetch_delay=%d", fetch_delay));
+    void'($value$plusargs("seed=%d", seed));
+    void'($urandom(seed));
 end
 
 task automatic load_banks();
@@ -51,10 +98,17 @@ task automatic load_banks();
     $readmemh({program_prefix, "_b1.hex"}, sys.cpu.if_id.im.bank1);
     $readmemh({program_prefix, "_b2.hex"}, sys.cpu.if_id.im.bank2);
     $readmemh({program_prefix, "_b3.hex"}, sys.cpu.if_id.im.bank3);
-    fd = $fopen({program_prefix, "_data.hex"}, "r");
+    if (EXT_START) begin
+        for (i = 0; i < EXT_WORDS; i = i + 1) ext_text[i] = 32'd0;
+        $readmemh({program_prefix, ".hex"}, ext_text);
+    end
+    fd = $fopen({program_prefix, "_data_b0.hex"}, "r");
     if (fd != 0) begin
         $fclose(fd);
-        $readmemh({program_prefix, "_data.hex"}, sys.dm.mem);
+        $readmemh({program_prefix, "_data_b0.hex"}, sys.dm.bank0);
+        $readmemh({program_prefix, "_data_b1.hex"}, sys.dm.bank1);
+        $readmemh({program_prefix, "_data_b2.hex"}, sys.dm.bank2);
+        $readmemh({program_prefix, "_data_b3.hex"}, sys.dm.bank3);
     end
     // Like the FPGA after power-up (and the ModelSim testbenches); reset then sets $sp
     for (i = 0; i < 32; i = i + 1)
@@ -77,9 +131,10 @@ wire        wb_write = sys.cpu.wb_write;        // valid, RegWrite, not $zero
 wire [4:0]  wb_dest  = sys.cpu.wb_dest;
 wire [31:0] wb_data  = sys.cpu.wb_data;
 
-// A branch/jump in ID that really redirects (not stalled, so its operands are current)
-// to its own address: the program's "end: j end". ref_sim.py stops after its delay slot.
-wire self_jump = sys.cpu.id_valid && sys.cpu.redirect && !sys.cpu.stall && !sys.cpu.stop &&
+// A branch/jump in ID that really redirects (IF/ID advances: not stalled, so its operands
+// are current, and its delay slot is fetched) to its own address: the program's "end: j end".
+// ref_sim.py stops after its delay slot.
+wire self_jump = sys.cpu.id_valid && sys.cpu.redirect && sys.cpu.if_id_enable &&
                  sys.cpu.redirect_pc == sys.cpu.id_pc;
 
 longint cycles = 0, steps = 0;
@@ -93,9 +148,34 @@ function automatic string hex8(input logic [31:0] value);
     return text.toupper();
 endfunction
 
+// ---- output queue: lines in program order; "?<PC>" = a divide whose HI/LO are not ready ----
+string out_q[$];
+bit end_pending = 0;            // the run ended; waiting for a divide to fill its lines
+string end_reason;
+
+function automatic bit is_hole(input string line);
+    return line.len() > 0 && line.getc(0) == "?";
+endfunction
+
+task automatic flush();
+    while (out_q.size() > 0 && !is_hole(out_q[0])) $display("%s", out_q.pop_front());
+endtask
+
+function automatic int hole();
+    for (int k = 0; k < out_q.size(); k++) if (is_hole(out_q[k])) return k;
+    return -1;
+endfunction
+
 task automatic finish(input string reason);
-    if (done) return;           // two ends on the same edge: report the first one
-    $display("HALT: %s  (steps=%0d)", reason, steps);
+    if (done || end_pending) return;    // two ends on the same edge: report the first one
+    end_reason = reason;
+    end_pending = 1;
+    if (hole() < 0) finish_now();
+endtask
+
+task automatic finish_now();
+    flush();
+    $display("HALT: %s  (steps=%0d)", end_reason, steps);
     $fwrite(32'h8000_0002, "mips_sim: %0d cycles, %0d instructions\n", cycles, steps);  // stderr
     if (ppm_file != "") save_ppm();
     done = 1;
@@ -113,12 +193,71 @@ task automatic save_ppm();
     $fclose(fd);
 endtask
 
+// ---- HI/LO (CPU-8): follow each HI/LO-writing instruction from EX to WB ----
+localparam [3:0] MTHI = 4'd3, MTLO = 4'd4, MULT = 4'd8, MULTU = 4'd9, DIV = 4'd10, DIVU = 4'd11;
+function automatic bit writes_hilo(input logic [3:0] op);
+    return op == MTHI || op == MTLO || op == MULT || op == MULTU || op == DIV || op == DIVU;
+endfunction
+typedef struct packed {
+    logic valid;
+    logic [3:0] op;
+    logic div_by_zero;
+    logic [31:0] pc, hi, lo;    // hi/lo: the values it wrote (taken while it is in MEM)
+} md_t;
+md_t md_mem = '0, md_wb = '0;
+bit div_ending = 0;             // the divider writes HI/LO on this edge: read them next cycle
+
 always @(posedge clk) if (!reset && !done) begin
     cycles <= cycles + 1;
 
-    // The write that happens on this edge (the register file writes on posedge)
-    if (wb_write) $display("PC=0x%s R%0d <= 0x%s", hex8(wb_pc), wb_dest, hex8(wb_data));
-    if (wb_valid) steps = steps + 1;
+    // HI/LO lines of the instruction in WB, in its place (it writes no register)
+    if (md_wb.valid && !end_pending) begin
+        if (md_wb.op == MTHI)
+            out_q.push_back($sformatf("PC=0x%s HI <= 0x%s", hex8(md_wb.pc), hex8(md_wb.hi)));
+        else if (md_wb.op == MTLO)
+            out_q.push_back($sformatf("PC=0x%s LO <= 0x%s", hex8(md_wb.pc), hex8(md_wb.lo)));
+        else if (md_wb.op == MULT || md_wb.op == MULTU) begin
+            out_q.push_back($sformatf("PC=0x%s HI <= 0x%s", hex8(md_wb.pc), hex8(md_wb.hi)));
+            out_q.push_back($sformatf("PC=0x%s LO <= 0x%s", hex8(md_wb.pc), hex8(md_wb.lo)));
+        end else if (!md_wb.div_by_zero) begin
+            out_q.push_back({"?", hex8(md_wb.pc)});     // its place, until the divider is done
+        end
+    end
+    // A divide finished on the last edge: fill its place
+    if (div_ending) begin
+        int k = hole();
+        if (k >= 0) begin
+            string pc_text = out_q[k].substr(1, 8);
+            out_q[k] = $sformatf("PC=0x%s HI <= 0x%s", pc_text, hex8(sys.cpu.hi));
+            out_q.insert(k + 1, $sformatf("PC=0x%s LO <= 0x%s", pc_text, hex8(sys.cpu.lo)));
+        end
+        div_ending = 0;
+    end
+    if (sys.cpu.md.count == 6'd1) div_ending = 1;
+
+    // The register write that happens on this edge (the register file writes on posedge)
+    if (wb_write && !end_pending)
+        out_q.push_back($sformatf("PC=0x%s R%0d <= 0x%s", hex8(wb_pc), wb_dest, hex8(wb_data)));
+    if (wb_valid && !end_pending) steps = steps + 1;
+    flush();
+    if (end_pending && hole() < 0) finish_now();
+
+    // Move the HI/LO trackers along with EX/MEM and MEM/WB. CPU-9: while mem_stall holds,
+    // EX/MEM keeps its instruction and WB gets a bubble.
+    if (sys.cpu.mem_stall) begin
+        md_wb.valid = 0;
+    end else begin
+        md_wb = md_mem;
+        md_wb.valid = md_mem.valid && !sys.cpu.access_fault;
+        if (md_mem.valid) begin             // in MEM now: HI/LO already hold its result
+            md_wb.hi = sys.cpu.hi;
+            md_wb.lo = sys.cpu.lo;
+        end
+        md_mem.valid = sys.cpu.ex_valid && !sys.cpu.access_fault && writes_hilo(sys.cpu.ex_md_op);
+        md_mem.op = sys.cpu.ex_md_op;
+        md_mem.pc = sys.cpu.ex_pc;
+        md_mem.div_by_zero = sys.cpu.ex_b == 32'd0;
+    end
 
     // End 1: the self-jump, then its delay slot, finished
     if (end_state == 0 && self_jump) begin
@@ -130,10 +269,11 @@ always @(posedge clk) if (!reset && !done) begin
         finish($sformatf("jumps to itself at 0x%s", hex8(end_pc)));
     end
 
-    // End 2: CPU-14 halt. Older instructions still finish (up to 3 in EX, MEM, WB)
-    if (sys.halted) begin
+    // End 2: CPU-14 halt. Older instructions still finish: wait until EX, MEM and WB are
+    // empty (CPU-9: mem_stall can make that take longer than 3 cycles)
+    if (sys.halted && !sys.cpu.ex_valid && !sys.cpu.mem_valid && !wb_valid) begin
         drain = drain + 1;
-        if (drain == 3)
+        if (drain == 1)
             finish($sformatf("cause %0d (%s) pc 0x%s addr 0x%s", sys.halt_cause,
                    sys.halt_cause == 1 ? "fetch" : sys.halt_cause == 2 ? "load" : "store",
                    hex8(sys.halt_pc), hex8(sys.halt_addr)));

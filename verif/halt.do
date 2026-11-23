@@ -2,7 +2,7 @@
 onerror {quit -code 1 -f}
 catch {quit -sim}
 vlib work
-vlog ../rtl/mips_pipeline.v ../rtl/hazard_unit.v ../rtl/if_id_register.v ../rtl/pipeline_register.v \
+vlog ../rtl/mips_pipeline.v ../rtl/mult_div.v ../rtl/hazard_unit.v ../rtl/if_id_register.v ../rtl/pipeline_register.v \
      ../rtl/instruction_memory.v ../rtl/control_unit.v \
      ../rtl/register_file.v ../rtl/alu.v ../rtl/alu_control.v ../rtl/data_memory.v \
      ../rtl/debounce.v ../rtl/hex7seg.v ../rtl/hex_debug.v ../rtl/mmio.v \

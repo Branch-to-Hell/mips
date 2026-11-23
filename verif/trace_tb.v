@@ -23,10 +23,10 @@ wire [31:0] mem_addr, mem_wdata, mem_rdata;
 wire mem_we, mem_re;
 mips_pipeline #(.IMEM_INIT("../mem/tc16_trace")) dut(.clk(clk), .reset(reset),
     .mem_addr(mem_addr), .mem_wdata(mem_wdata), .mem_we(mem_we), .mem_re(mem_re),
-    .mem_rdata(mem_rdata), .mem_fault(1'b0), .dbg_sel(5'd0), .dbg_value(),
+    .mem_rdata(mem_rdata), .mem_fault(1'b0), .mem_stall(1'b0), .ifetch_addr(), .ifetch_req(), .ifetch_data(32'd0), .ifetch_ready(1'b0), .dbg_sel(5'd0), .dbg_value(),
     .halted(), .halt_cause(), .halt_pc(), .halt_addr());
-data_memory #(.INIT_FILE("../mem/tc16_trace_data.hex")) dm(.clk(clk), .MemRead(mem_re),
-    .MemWrite(mem_we), .Address(mem_addr), .WriteData(mem_wdata), .ReadData(mem_rdata));
+data_memory #(.INIT_FILE("../mem/tc16_trace_data")) dm(.clk(clk), .MemRead(mem_re),
+    .MemWrite(mem_we), .ByteEnable(4'b1111), .Address(mem_addr), .WriteData(mem_wdata), .ReadData(mem_rdata));
 always #5 clk = ~clk;
 
 integer i, k, cycle = 0, errors = 0;
@@ -60,7 +60,7 @@ task state(input integer t, input [8*6-1:0] when);
         0: $fdisplay(f[t], "%0s: $t0 = %h  $t1 = %h  $t2 = %h", when,
                      reg_value(8), reg_value(9), reg_value(10));
         1: $fdisplay(f[t], "%0s: $s1 = %h  $t3 = %h  mem[0x10010004] = %h", when,
-                     reg_value(17), reg_value(11), dm.mem[1]);
+                     reg_value(17), reg_value(11), dm.word(1));
         2: $fdisplay(f[t], "%0s: $t4 = %h  (j_target skips addi $t4, $zero, 1)", when, reg_value(12));
         endcase
     end

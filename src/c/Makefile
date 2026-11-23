@@ -21,21 +21,20 @@ ARCH    := -march=mips1 -mabi=32 -msoft-float -mno-abicalls -fno-pic -G0 -EB
 # never the cross compiler's glibc headers (-nostdinc)
 INCLUDE := -nostdinc -isystem libc/include -isystem $(shell $(CC) -print-file-name=include)
 # -mno-check-zero-division: no "break 7" trap after div/divu (the CPU has no exceptions)
-CFLAGS  := $(ARCH) -O2 -ffreestanding -fno-builtin -nostdlib -mno-check-zero-division -Wall -Wextra            $(INCLUDE) -MMD -MP
+# -ffunction-sections + --gc-sections: only the functions a program calls are linked (the
+# 16 KB on-chip text is small, and libc's stdio.o alone has printf, sscanf and the files)
+CFLAGS  := $(ARCH) -O2 -ffreestanding -fno-builtin -nostdlib -mno-check-zero-division -Wall -Wextra \
+           -ffunction-sections -fdata-sections $(INCLUDE) -MMD -MP
 # libc: GCC must not turn the loops of memset/memcpy into calls to memset/memcpy (itself)
 LIBC_CFLAGS := $(CFLAGS) -fno-tree-loop-distribute-patterns
-LDFLAGS := $(ARCH) -nostdlib -nostartfiles -static -T link.ld \
+LDFLAGS := $(ARCH) -nostdlib -nostartfiles -static -T link.ld -Wl,--gc-sections \
            -Wl,--build-id=none -Wl,--no-warn-rwx-segments
 LIBC    := $(BUILD)/libc.a
 LIBS    := $(LIBC) -lgcc    # our libc, then GCC's helpers (64-bit shifts, soft float)
 
-# --phase1: fail if GCC used an instruction mips_pipeline does not run yet.
-# Drop it (ELF2HEX_FLAGS=) once CPU-7 and CPU-8 are merged.
-ELF2HEX_FLAGS ?= --phase1
-# Programs that need the phase 2 ISA (any use of the libc does: lbu/sb, divu, ...):
-# they run in ref_sim.py now, and on the CPU once CPU-7 and CPU-8 are in.
-PHASE2_PROGRAMS := test_libc
-$(foreach p,$(PHASE2_PROGRAMS),$(eval $(MEM)/$(p).hex: ELF2HEX_FLAGS :=))
+# --isa: fail if GCC (or a libgcc routine) used an instruction mips_pipeline doesn't run.
+# ELF2HEX_FLAGS=--phase1 instead lists what a phase 1 CPU (mips_cpu) could not run.
+ELF2HEX_FLAGS ?= --isa
 
 PROGRAMS := $(basename $(wildcard *.c))
 LIBC_OBJS := $(patsubst libc/%.c,$(BUILD)/libc/%.o,$(wildcard libc/*.c))

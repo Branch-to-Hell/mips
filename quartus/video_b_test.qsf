@@ -12,6 +12,7 @@ set_global_assignment -name INTERNAL_FLASH_UPDATE_MODE "SINGLE IMAGE WITH ERAM"
 set_global_assignment -name VERILOG_FILE ../rtl/top_video_b_test.v
 set_global_assignment -name VERILOG_FILE ../rtl/life_system.v
 set_global_assignment -name VERILOG_FILE ../rtl/mips_pipeline.v
+set_global_assignment -name VERILOG_FILE ../rtl/mult_div.v
 set_global_assignment -name VERILOG_FILE ../rtl/hazard_unit.v
 set_global_assignment -name VERILOG_FILE ../rtl/if_id_register.v
 set_global_assignment -name VERILOG_FILE ../rtl/pipeline_register.v

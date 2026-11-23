@@ -12,8 +12,11 @@ Every file has one byte per line, 2 lowercase hex digits, no address and no head
 Line i of a bank file is the byte of instruction i. instruction_memory.v loads the 4 bank files
 with $readmemh, from the prefix given in IMEM_INIT (e.g. "../mem/life_board").
 
+A data image (<name>_data.hex) gets only the 4 lanes, <name>_data_b0..b3.hex (CPU-7: data_memory
+has one bank per byte lane and loads them from the prefix in DMEM_INIT, e.g. "../mem/x_data").
+
 Usage (from the repo root):
-    python src/tools/hex2banks.py mem/life_board.hex [more.hex ...]
+    python src/tools/hex2banks.py mem/life_board.hex mem/life_board_data.hex [more.hex ...]
 """
 import sys
 from pathlib import Path
@@ -42,14 +45,18 @@ def write_bytes(path, values):
     path.write_text("".join(f"{b:02x}\n" for b in values), newline="\n")  # LF on every OS
 
 
-def convert(src):
+def convert(src, bytes_image=True):
+    """bytes_image=False for a data image (<name>_data.hex): only the 4 lanes, which
+    data_memory loads (CPU-7: one bank per byte lane, like the instruction memory)."""
     words = read_words(src)
     base = src.with_suffix("")
     image = [(w >> shift) & 0xFF for w in words for shift in (24, 16, 8, 0)]  # big-endian
-    write_bytes(Path(f"{base}_bytes.hex"), image)
+    if bytes_image:
+        write_bytes(Path(f"{base}_bytes.hex"), image)
     for k in range(4):
         write_bytes(Path(f"{base}_b{k}.hex"), image[k::4])
-    print(f"{src}: {len(words)} words -> {base.name}_bytes.hex + {base.name}_b0..b3.hex")
+    made = f"{base.name}_bytes.hex + " if bytes_image else ""
+    print(f"{src}: {len(words)} words -> {made}{base.name}_b0..b3.hex")
 
 
 def main():
@@ -57,7 +64,7 @@ def main():
         sys.exit(__doc__)
     try:
         for arg in sys.argv[1:]:
-            convert(Path(arg))
+            convert(Path(arg), bytes_image=not arg.endswith("_data.hex"))
     except (OSError, ValueError) as e:
         sys.exit(f"Error: {e}")
 

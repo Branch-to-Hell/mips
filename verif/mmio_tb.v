@@ -29,12 +29,12 @@ mips_cpu #(.IMEM_INIT("../mem/test_mmio")) dut (
     .mem_we(mem_we), .mem_re(mem_re), .mem_rdata(mem_rdata)
 );
 data_memory dm (
-    .clk(clk), .MemRead(mem_re), .MemWrite(mem_we),
+    .clk(clk), .MemRead(mem_re), .MemWrite(mem_we), .ByteEnable(4'b1111),
     .Address(mem_addr), .WriteData(mem_wdata), .ReadData(dm_rdata)
 );
 mmio #(.DEBOUNCE_CYCLES(DB)) io (
     .clk(clk), .reset(reset),
-    .addr(mem_addr), .wdata(mem_wdata), .we(mem_we), .re(mem_re), .rdata(mmio_rdata),
+    .addr(mem_addr), .wdata(mem_wdata), .we(mem_we), .be(4'b1111), .re(mem_re), .rdata(mmio_rdata),
     .SW(SW), .KEY(KEY), .LEDR(LEDR),
     .HEX0(HEX0), .HEX1(HEX1), .HEX2(HEX2), .HEX3(HEX3), .HEX4(HEX4), .HEX5(HEX5)
 );

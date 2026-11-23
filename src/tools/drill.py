@@ -28,7 +28,7 @@ NAMES = ["zero", "at", "v0", "v1", "a0", "a1", "a2", "a3", "t0", "t1", "t2", "t3
 DATA_BASE = 0x10010000
 DATA_WORDS = 64
 MARS_TEXT = (0x00400000, 0x00404000)
-RTL = ["mips_pipeline.v", "hazard_unit.v", "if_id_register.v", "pipeline_register.v", "instruction_memory.v",
+RTL = ["mips_pipeline.v", "mult_div.v", "hazard_unit.v", "if_id_register.v", "pipeline_register.v", "instruction_memory.v",
        "control_unit.v", "register_file.v", "alu.v", "alu_control.v", "data_memory.v", "debounce.v",
        "hex7seg.v", "hex_debug.v", "mmio.v", "vga_sync.v", "framebuffer_a.v", "video_mode_a.v", "life_system.v"]
 

@@ -29,5 +29,6 @@ void qsort(void *base, size_t count, size_t size, int (*compare)(const void *, c
 void exit(int status) __attribute__((noreturn));
 void abort(void) __attribute__((noreturn));
 char *getenv(const char *name);     /* always NULL */
+int system(const char *command);    /* always -1: no shell */
 
 #endif

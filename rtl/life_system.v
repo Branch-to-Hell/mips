@@ -15,10 +15,15 @@ off so the Game of Life build doesn't spend 64 KB of M9K on it
 */
 module life_system #(
     parameter IMEM_INIT = "",
-    parameter DMEM_INIT = "",            // .data image (<name>_data.hex), "" = all zeros
+    parameter DMEM_INIT = "",            // .data image prefix: "../mem/<name>_data" loads <name>_data_b0..b3.hex; "" = all zeros
     parameter DEBOUNCE_CYCLES = 250_000, // 10 ms at 25 MHz; the testbench uses a small value
     parameter CYCLES_PER_MS = 25_000,    // timer: 1 ms at 25 MHz; the testbench uses a small value
-    parameter MODE_B = 0                 // 1 = include video mode B
+    parameter MODE_B = 0,                // 1 = include video mode B
+    /* CPU-9: 1 = the SDRAM region (0x2000_0000 - 0x23FF_FFFF, contracts.md "Doom memory") is on the
+    ext_* ports, for data and for instruction fetch, and ext_stall reaches the CPU's mem_stall.
+    0 = no external memory (top_life, top_program): the region faults and nothing ever waits */
+    parameter EXT_BUS = 0,
+    parameter RESET_PC = 32'h0000_0000   // first fetch (0x2000_0000 to start in the SDRAM)
 )(
     input clk,    // 25 MHz: CPU and VGA share the clock (contracts.md)
     input reset,
@@ -28,13 +33,26 @@ module life_system #(
     output [9:0] LEDR,
     output [7:0] HEX0, HEX1, HEX2, HEX3, HEX4, HEX5,
     output [3:0] VGA_R, VGA_G, VGA_B,
-    output VGA_HS, VGA_VS
+    output VGA_HS, VGA_VS,
+
+    // CPU-9: external memory side (EXT_BUS = 1), for the SDRAM bridge and instruction cache
+    output [31:0] bus_addr, bus_wdata,  // the CPU's data bus, as on its ports
+    output bus_we, bus_re,
+    output [3:0] bus_be,
+    output ext_sel,                     // bus_addr is in the SDRAM region
+    input [31:0] ext_rdata,             // 0 unless answering a read of the region
+    input ext_stall,                    // the access in MEM isn't done (holds the CPU)
+    output [31:0] ifetch_addr,
+    output ifetch_req,
+    input [31:0] ifetch_data,
+    input ifetch_ready
 );
 
 // CPU memory bus
 wire [31:0] mem_addr, mem_wdata, mem_rdata, dm_rdata, stack_rdata, mmio_rdata, fb_rdata;
 wire video_mode;
 wire mem_we, mem_re;
+wire [3:0] mem_be;   // CPU-7 byte enables, [3] = bits 31..24 (big-endian)
 wire [7:0] io_hex0, io_hex1, io_hex2, io_hex3, io_hex4, io_hex5;  // the program's HEX (MMIO)
 
 // Debug view: the register picked with SW4-0
@@ -54,32 +72,45 @@ wire mmio_sel  = (mem_addr >= 32'hFFFF_0010) && (mem_addr <= 32'hFFFF_0027);
 wire fb_sel    = (mem_addr[31:16] == 16'h1004) && (mem_addr[15:14] != 2'b11); // mode A, see below
 wire fbb_sel   = MODE_B && (mem_addr[31:16] == 16'h1005) && (mem_addr[15:0] < 16'hFA00);
 wire pal_sel   = MODE_B && (mem_addr[31:10] == {16'h1005, 6'b111111});
-wire mem_fault = !(data_sel || stack_sel || mmio_sel || fb_sel || fbb_sel || pal_sel);
+/* CPU-7: framebuffer A and the palette store 12 bits per word (4 per color), so they only
+take whole words: a byte or half access there halts too (store = cause 3, load = 2).
+mem_be depends only on the instruction in MEM (size and address), so there is no loop */
+wire word_only = (fb_sel || pal_sel) && mem_be != 4'b1111;
+assign ext_sel = EXT_BUS && (mem_addr[31:26] == 6'b001000);              // 0x2000_0000 - 0x23FF_FFFF
+wire mem_fault = !(data_sel || stack_sel || mmio_sel || fb_sel || fbb_sel || pal_sel || ext_sel) || word_only;
+assign bus_addr = mem_addr;
+assign bus_wdata = mem_wdata;
+assign bus_we = mem_we;
+assign bus_re = mem_re;
+assign bus_be = mem_be;
 
-mips_pipeline #(.IMEM_INIT(IMEM_INIT)) cpu (
+mips_pipeline #(.IMEM_INIT(IMEM_INIT), .RESET_PC(RESET_PC), .EXT_TEXT(EXT_BUS)) cpu (
     .clk(clk), .reset(reset),
     .mem_addr(mem_addr), .mem_wdata(mem_wdata),
-    .mem_we(mem_we), .mem_re(mem_re), .mem_rdata(mem_rdata), .mem_fault(mem_fault),
+    .mem_we(mem_we), .mem_re(mem_re), .mem_be(mem_be), .mem_rdata(mem_rdata), .mem_fault(mem_fault),
+    .mem_stall(EXT_BUS ? ext_stall : 1'b0),
+    .ifetch_addr(ifetch_addr), .ifetch_req(ifetch_req),
+    .ifetch_data(ifetch_data), .ifetch_ready(EXT_BUS ? ifetch_ready : 1'b0),
     .dbg_sel(SW[4:0]), .dbg_value(dbg_value),
     .halted(halted), .halt_cause(halt_cause), .halt_pc(halt_pc), .halt_addr(halt_addr)
 );
 
 // Data: 0x1001_0000 - 0x1001_3FFF (16 KB)
 data_memory #(.INIT_FILE(DMEM_INIT)) dm (
-    .clk(clk), .MemRead(mem_re), .MemWrite(mem_we),
+    .clk(clk), .MemRead(mem_re), .MemWrite(mem_we), .ByteEnable(mem_be),
     .Address(mem_addr), .WriteData(mem_wdata), .ReadData(dm_rdata)
 );
 
 // Stack (PLT-13): 0x7FFF_E000 - 0x7FFF_EFFF (4 KB); $sp starts at 0x7FFF_EFFC
 data_memory #(.BASE(32'h7FFF_E000), .WORDS(1024)) stack (
-    .clk(clk), .MemRead(mem_re), .MemWrite(mem_we),
+    .clk(clk), .MemRead(mem_re), .MemWrite(mem_we), .ByteEnable(mem_be),
     .Address(mem_addr), .WriteData(mem_wdata), .ReadData(stack_rdata)
 );
 
 wire [9:0] io_ledr;  // the program's LEDs (MMIO)
 mmio #(.DEBOUNCE_CYCLES(DEBOUNCE_CYCLES), .CYCLES_PER_MS(CYCLES_PER_MS)) io (
     .clk(clk), .reset(reset),
-    .addr(mem_addr), .wdata(mem_wdata), .we(mem_we), .re(mem_re), .rdata(mmio_rdata),
+    .addr(mem_addr), .wdata(mem_wdata), .we(mem_we), .be(mem_be), .re(mem_re), .rdata(mmio_rdata),
     .SW(SW), .KEY(KEY), .LEDR(io_ledr),
     .HEX0(io_hex0), .HEX1(io_hex1), .HEX2(io_hex2), .HEX3(io_hex3), .HEX4(io_hex4), .HEX5(io_hex5),
     .video_mode(video_mode)
@@ -158,7 +189,7 @@ if (MODE_B) begin : mode_b
 
     video_mode_b video_b (
         .clk(clk), .a_clk(clk),
-        .fb_we(mem_we && fbb_sel), .fb_be(4'b1111), .fb_addr(mem_addr[15:2]),
+        .fb_we(mem_we && fbb_sel), .fb_be(mem_be), .fb_addr(mem_addr[15:2]),
         .fb_wdata(mem_wdata), .fb_rdata(fbb_rdata),
         .pal_we(mem_we && pal_sel), .pal_addr(mem_addr[9:2]),
         .pal_wdata(mem_wdata), .pal_rdata(pal_rdata),
@@ -180,7 +211,7 @@ assign VGA_HS = show_b ? b_hs : a_hs;
 assign VGA_VS = show_b ? b_vs : a_vs;
 
 // Each device returns 0 when it wasn't read, so the read bus is an OR
-assign mem_rdata = dm_rdata | stack_rdata | mmio_rdata | (fb_rd ? fb_rdata : 32'b0)
+assign mem_rdata = dm_rdata | stack_rdata | mmio_rdata | (fb_rd ? fb_rdata : 32'b0) | (EXT_BUS ? ext_rdata : 32'b0)
                  | (fbb_rd ? fbb_rdata : 32'b0) | (pal_rd ? pal_rdata : 32'b0);
 
 endmodule

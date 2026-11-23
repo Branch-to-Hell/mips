@@ -5,8 +5,15 @@
 #include <string.h>
 #include <stdint.h>
 #include <errno.h>
+#include <stdlib.h>
+#include <ctype.h>
 
-struct __file { int unused; };
+/* A FILE is the console (stdin/stdout/stderr: data = NULL) or a read-only file in memory */
+struct __file {
+    const unsigned char *data;
+    long size, pos;
+    int in_use;
+};
 static struct __file files[3];
 FILE *const stdin = &files[0], *const stdout = &files[1], *const stderr = &files[2];
 
@@ -277,21 +284,72 @@ int puts(const char *s)
 
 int fflush(FILE *f) { (void)f; return 0; }
 
-/* No file system yet */
+/* ---- files: no file system, only read-only files in memory ----
+   A program registers a block of memory under a name (e.g. the WAD in the SDRAM, DOOM-3) and
+   then fopen(name, "rb") reads it with fread/fseek/ftell. Anything else fails. */
+#define MEM_FILES 4
+#define OPEN_FILES 8
+static struct { const char *name; const void *data; long size; } mem_files[MEM_FILES];
+static struct __file open_files[OPEN_FILES];
+
+int __mem_file_add(const char *name, const void *data, long size)
+{
+    for (int i = 0; i < MEM_FILES; i++)
+        if (!mem_files[i].name) {
+            mem_files[i].name = name;
+            mem_files[i].data = data;
+            mem_files[i].size = size;
+            return 0;
+        }
+    return -1;
+}
+
 FILE *fopen(const char *path, const char *mode)
 {
-    (void)path;
-    (void)mode;
+    if (mode[0] != 'r' || strchr(mode, '+')) {      /* read only */
+        errno = EINVAL;
+        return NULL;
+    }
+    for (int i = 0; i < MEM_FILES; i++) {
+        if (!mem_files[i].name || strcmp(mem_files[i].name, path))
+            continue;
+        for (int k = 0; k < OPEN_FILES; k++)
+            if (!open_files[k].in_use) {
+                open_files[k].data = mem_files[i].data;
+                open_files[k].size = mem_files[i].size;
+                open_files[k].pos = 0;
+                open_files[k].in_use = 1;
+                return &open_files[k];
+            }
+        errno = ENOMEM;
+        return NULL;
+    }
     errno = ENOENT;
     return NULL;
 }
 
-int fclose(FILE *f) { (void)f; return EOF; }
+static int is_mem_file(FILE *f)
+{
+    return f && f->in_use && f->data;
+}
+
+int fclose(FILE *f)
+{
+    if (!is_mem_file(f))
+        return EOF;
+    f->in_use = 0;
+    return 0;
+}
 
 size_t fread(void *buf, size_t size, size_t count, FILE *f)
 {
-    (void)buf; (void)size; (void)count; (void)f;
-    return 0;
+    if (!is_mem_file(f) || size == 0)
+        return 0;
+    size_t left = f->pos < f->size ? (size_t)(f->size - f->pos) : 0;
+    size_t items = left / size < count ? left / size : count;
+    memcpy(buf, f->data + f->pos, items * size);
+    f->pos += items * size;
+    return items;
 }
 
 size_t fwrite(const void *buf, size_t size, size_t count, FILE *f)
@@ -302,5 +360,127 @@ size_t fwrite(const void *buf, size_t size, size_t count, FILE *f)
             putchar(p[i]);
         return count;
     }
+    return 0;                                       /* memory files are read only */
+}
+
+int fseek(FILE *f, long offset, int whence)
+{
+    if (!is_mem_file(f)) {
+        errno = EBADF;
+        return -1;
+    }
+    long base = whence == SEEK_SET ? 0 : whence == SEEK_CUR ? f->pos : f->size;
+    if (base + offset < 0) {
+        errno = EINVAL;
+        return -1;
+    }
+    f->pos = base + offset;
     return 0;
+}
+
+long ftell(FILE *f)
+{
+    if (!is_mem_file(f)) {
+        errno = EBADF;
+        return -1;
+    }
+    return f->pos;
+}
+
+int feof(FILE *f)
+{
+    return is_mem_file(f) && f->pos >= f->size;
+}
+
+int remove(const char *path) { (void)path; errno = ENOENT; return -1; }
+int rename(const char *from, const char *to) { (void)from; (void)to; errno = ENOENT; return -1; }
+
+/* ---- sscanf: whitespace, literal characters, the integer conversions %d %i %u %x %X %o,
+   %s, %c and %n; * skips an assignment, a width is accepted and ignored ---- */
+int vsscanf(const char *str, const char *fmt, va_list ap)
+{
+    const char *in = str;
+    int assigned = 0;
+    for (; *fmt; fmt++) {
+        if (isspace((unsigned char)*fmt)) {
+            while (isspace((unsigned char)*in))
+                in++;
+            continue;
+        }
+        if (*fmt != '%' || fmt[1] == '%') {         /* a literal character (or %%) */
+            if (*fmt == '%')
+                fmt++;
+            if (*in != *fmt)
+                break;
+            in++;
+            continue;
+        }
+        fmt++;
+        int skip = 0;
+        if (*fmt == '*') {
+            skip = 1;
+            fmt++;
+        }
+        while (*fmt >= '0' && *fmt <= '9')
+            fmt++;
+        while (*fmt == 'h' || *fmt == 'l')
+            fmt++;
+        char conv = *fmt;
+        if (conv == 'n') {
+            if (!skip)
+                *va_arg(ap, int *) = in - str;
+            continue;
+        }
+        if (conv != 'c')
+            while (isspace((unsigned char)*in))
+                in++;
+        if (!*in)
+            return assigned ? assigned : EOF;
+        if (conv == 'c') {
+            if (!skip) {
+                *va_arg(ap, char *) = *in;
+                assigned++;
+            }
+            in++;
+            continue;
+        }
+        if (conv == 's') {
+            char *out = skip ? NULL : va_arg(ap, char *);
+            while (*in && !isspace((unsigned char)*in)) {
+                if (out)
+                    *out++ = *in;
+                in++;
+            }
+            if (out) {
+                *out = 0;
+                assigned++;
+            }
+            continue;
+        }
+        int base;
+        if (conv == 'd' || conv == 'u') base = 10;
+        else if (conv == 'x' || conv == 'X') base = 16;
+        else if (conv == 'o') base = 8;
+        else if (conv == 'i') base = 0;
+        else break;                                 /* not supported */
+        char *end;
+        long value = (conv == 'd' || conv == 'i') ? strtol(in, &end, base) : (long)strtoul(in, &end, base);
+        if (end == in)
+            break;                                  /* no number: stop here */
+        in = end;
+        if (!skip) {
+            *va_arg(ap, int *) = (int)value;
+            assigned++;
+        }
+    }
+    return assigned;
+}
+
+int sscanf(const char *str, const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsscanf(str, fmt, ap);
+    va_end(ap);
+    return n;
 }

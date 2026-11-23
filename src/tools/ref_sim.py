@@ -17,7 +17,8 @@ The run stops and the last line says why:
   - HALT: reached --max-steps N ...
   - HALT: cause C (...) pc ... addr ... the same halt as the CPU (contracts.md, CPU-14):
         cause 1 = fetch outside the 16 KB text region or not aligned to 4,
-        cause 2 = load, 3 = store, to no region of the memory map or misaligned.
+        cause 2 = load, 3 = store, to no region of the memory map or misaligned,
+        or a byte/half access to framebuffer A or the palette (they take whole words only).
     The failing instruction writes nothing. --flat-mem turns the memory map check off
     (every address is RAM); alignment is always checked.
 
@@ -47,6 +48,9 @@ REGIONS = [
     (0x7FFFE000, 0x7FFFEFFF, "stack"),
     (0xFFFF0010, 0xFFFF0027, "MMIO"),
 ]
+
+# CPU-7: these store 12 bits per word, so the hardware takes only whole words there
+WORD_ONLY = [(0x10040000, 0x1004BFFF), (0x1005FC00, 0x1005FFFF)]   # framebuffer A, palette B
 
 CAUSE_FETCH, CAUSE_LOAD, CAUSE_STORE = 1, 2, 3
 CAUSE_NAMES = {CAUSE_FETCH: "fetch", CAUSE_LOAD: "load", CAUSE_STORE: "store"}
@@ -110,6 +114,8 @@ class ReferenceSim:
         if addr % size != 0:
             raise Fault(cause, addr)
         if self.check_map and not any(lo <= addr <= hi for lo, hi, _ in REGIONS):
+            raise Fault(cause, addr)
+        if self.check_map and size != 4 and any(lo <= addr <= hi for lo, hi in WORD_ONLY):
             raise Fault(cause, addr)
 
     def mem_addr(self, rs, offset16):
@@ -269,6 +275,8 @@ class ReferenceSim:
             if r[rt] != 0:
                 self.write_hi(r[rs] % r[rt])
                 self.write_lo(r[rs] // r[rt])
+        elif funct in (0b001100, 0b001101):             # syscall, break: no exceptions, a nop
+            pass                                        # (like control_unit.v)
         else:
             raise ValueError(f"unsupported R funct 0x{funct:02X}")
         self.pc += 4
@@ -345,6 +353,10 @@ class ReferenceSim:
             self.branch(value < 0, instr)
         elif rt == 0b00001:                             # bgez
             self.branch(value >= 0, instr)
+        elif rt in (0b10000, 0b10001):                  # bltzal, bgezal (CPU-7)
+            # $ra = PC + 8 even when not taken (MIPS); rs was read before the link write
+            self.write_reg(31, self.return_address())
+            self.branch(value < 0 if rt == 0b10000 else value >= 0, instr)
         else:
             raise ValueError(f"unsupported REGIMM rt 0x{rt:02X}")
 

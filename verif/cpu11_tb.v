@@ -16,7 +16,7 @@ wire sc_we, sc_re, pl_we, pl_re;
 mips_cpu sc(.clk(clk), .reset(reset), .mem_addr(sc_addr), .mem_wdata(sc_wdata),
     .mem_we(sc_we), .mem_re(sc_re), .mem_rdata(32'd0), .dbg_sel(5'd0), .dbg_value());
 mips_pipeline pl(.clk(clk), .reset(reset), .mem_addr(pl_addr), .mem_wdata(pl_wdata),
-    .mem_we(pl_we), .mem_re(pl_re), .mem_rdata(32'd0), .mem_fault(1'b0), .dbg_sel(5'd0), .dbg_value());
+    .mem_we(pl_we), .mem_re(pl_re), .mem_rdata(32'd0), .mem_fault(1'b0), .mem_stall(1'b0), .ifetch_addr(), .ifetch_req(), .ifetch_data(32'd0), .ifetch_ready(1'b0), .dbg_sel(5'd0), .dbg_value());
 always #5 clk = ~clk;
 
 // R-type: rs, rt, rd, funct. I-type: opcode, rs, rt, imm.

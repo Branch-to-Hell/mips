@@ -23,7 +23,7 @@ wire [7:0] HEX0, HEX1, HEX2, HEX3, HEX4, HEX5;
 wire [3:0] VGA_R, VGA_G, VGA_B;
 wire VGA_HS, VGA_VS;
 
-life_system #(.IMEM_INIT({"../mem/", PROGRAM}), .DMEM_INIT({"../mem/", PROGRAM, "_data.hex"}),
+life_system #(.IMEM_INIT({"../mem/", PROGRAM}), .DMEM_INIT({"../mem/", PROGRAM, "_data"}),
               .DEBOUNCE_CYCLES(50)) sys (
     .clk(clk), .reset(reset), .SW(SW), .KEY(KEY), .LEDR(LEDR),
     .HEX0(HEX0), .HEX1(HEX1), .HEX2(HEX2), .HEX3(HEX3), .HEX4(HEX4), .HEX5(HEX5),
@@ -68,10 +68,10 @@ initial begin
     repeat (5) @(posedge clk);
 
     // 2. Result in memory, inputs untouched
-    if (sys.dm.mem[2] !== EXPECTED)
-        $display("FAIL  %0s: result = %0d, expected %0d", PROGRAM, sys.dm.mem[2], EXPECTED);
-    if (sys.dm.mem[2] !== EXPECTED) errors = errors + 1;
-    if (sys.dm.mem[0] !== N || sys.dm.mem[1] !== TARGET) fail("n or target changed (or .data not loaded)");
+    if (sys.dm.word(2) !== EXPECTED)
+        $display("FAIL  %0s: result = %0d, expected %0d", PROGRAM, sys.dm.word(2), EXPECTED);
+    if (sys.dm.word(2) !== EXPECTED) errors = errors + 1;
+    if (sys.dm.word(0) !== N || sys.dm.word(1) !== TARGET) fail("n or target changed (or .data not loaded)");
 
     // 3. The count on the board: SW9 debug view of register 11 ($t3)
     SW = 10'b10_0000_1011;
@@ -81,7 +81,7 @@ initial begin
 
     if (errors == 0)
         $display("PASS: %0s: n = %0d, target = %0d, result = %0d (expected %0d), self-jump after %0d cycles",
-                 PROGRAM, N, TARGET, sys.dm.mem[2], EXPECTED, n);
+                 PROGRAM, N, TARGET, sys.dm.word(2), EXPECTED, n);
     else
         $display("FAILED: %0s, %0d error(s)", PROGRAM, errors);
     $stop;
