@@ -4,6 +4,7 @@ Usage:
     python src/tools/ref_sim.py <file>.hex [--text-base 0x00400000]
            [--data <file>_data.hex] [--max-steps N] [--no-delay-slot] [--flat-mem]
            [--init R<n>=<value> ...] [--dump-regs] [--dump-mem ADDR:COUNT ...]
+    python src/tools/ref_sim.py <name>_sdram.hex --sdram     (C programs linked at 0x2000_0000)
 
 Trace (docs/contracts.md "Reference simulator trace"), one line per write:
     PC=0x00000000 R8 <= 0x00000005
@@ -30,6 +31,11 @@ the delay slot and PC+4 without it.
 Initial state, the same as mips_pipeline after reset: PC = text base, $sp = 0x7FFFEFFC,
 every other register 0 (MARS also sets $gp = 0x10008000: --init R28=0x10008000).
 Memory is big-endian. MMIO addresses behave like RAM (no switches, timer or LEDs).
+
+--sdram (PLT-8, contracts.md "Doom memory"): the image is an SDRAM image from elf2hex.py --sdram
+(code, constants and .data from 0x2000_0000). It runs from 0x2000_0000 and is also the initial
+content of the SDRAM region (0x2000_0000 - 0x23FF_FFFF), which becomes part of the memory map,
+like in top_doom (life_system with EXT_BUS = 1).
 """
 import argparse
 import os
@@ -38,6 +44,8 @@ import sys
 TEXT_BASE = 0x00000000
 TEXT_SIZE = 0x4000          # 16 KB text region (contracts.md "Memory map")
 DATA_BASE = 0x10010000
+SDRAM_BASE = 0x20000000     # --sdram: top_doom's SDRAM region (64 MB)
+SDRAM_SIZE = 0x04000000
 
 # Regions of the memory map, as decoded in rtl/life_system.v (inclusive ranges).
 REGIONS = [
@@ -399,7 +407,7 @@ class ReferenceSim:
 
 
 def main():
-    global TEXT_BASE
+    global TEXT_BASE, TEXT_SIZE
     ap = argparse.ArgumentParser(description="Reference MIPS simulator (TC-6)")
     ap.add_argument("hexfile", help="<name>.hex written by the assembler")
     ap.add_argument("--text-base", default="0", help="address of the first instruction (the same as the assembler's)")
@@ -407,6 +415,8 @@ def main():
     ap.add_argument("--max-steps", type=int, default=1000000, help="stop after this many instructions")
     ap.add_argument("--no-delay-slot", action="store_true",
                     help="jumps take effect at once (MARS with delayed branching off)")
+    ap.add_argument("--sdram", action="store_true",
+                    help="the image is linked at 0x2000_0000 (elf2hex.py --sdram): run it from there, with the SDRAM region")
     ap.add_argument("--flat-mem", action="store_true",
                     help="no memory map check: every data address is RAM")
     ap.add_argument("--dump-regs", action="store_true", help="print the final register values as R<n> = 0x<value>")
@@ -417,6 +427,9 @@ def main():
     args = ap.parse_args()
 
     TEXT_BASE = int(args.text_base, 0)
+    if args.sdram:
+        TEXT_BASE, TEXT_SIZE = SDRAM_BASE, SDRAM_SIZE
+        REGIONS.append((SDRAM_BASE, SDRAM_BASE + SDRAM_SIZE - 1, "SDRAM"))
     sim = ReferenceSim(delay_slot=not args.no_delay_slot, check_map=not args.flat_mem)
 
     for item in args.init:
@@ -440,6 +453,10 @@ def main():
             sys.exit(f"Error: --dump-mem expects ADDR:COUNT, got '{item}'")
 
     sim.load_hex(args.hexfile)
+    if args.sdram:
+        for i, word in enumerate(sim.program):
+            for k in range(4):
+                sim.data_mem[SDRAM_BASE + 4 * i + k] = (word >> (8 * (3 - k))) & 0xFF
     data_path = args.data
     if data_path is None:
         candidate = os.path.splitext(args.hexfile)[0] + "_data.hex"

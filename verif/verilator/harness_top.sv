@@ -14,6 +14,20 @@
 // mips_sim_ext (EXT_START = 1) starts at 0x2000_0000 and fetches every instruction through the
 // CPU's external fetch port, from <prefix>.hex in a memory of the harness: assemble the program
 // with --text-base 0x20000000.
+// mips_sim_sdram (EXT_START = 2, PLT-8/PLT-12/DOOM-6): the real external side, ext_memory (the
+// SDRAM bridge, the instruction cache and their arbiter), on a behavioural SDRAM (avalon_sdram.sv).
+// It starts at 0x2000_0000; code, data and .bss in the SDRAM, like top_doom after boot.S.
+//   +sdram=<file>        word image loaded at SDRAM offset 0 (= 0x2000_0000), e.g.
+//                        build/doom/doom_sdram.hex or <name>_sdram.hex from elf2hex.py --sdram
+//   +wad=<file>          binary file loaded at SDRAM offset 0x0300_0000 (= 0x2300_0000)
+//   +program=<prefix>    optional here: on-chip banks/data, if the program has any
+//   +sdram_wait=<P>      waitrequest = 1 in P% of the cycles (default 0)
+//   +sdram_extra=<N>     read latency 5 to 5+N cycles (default 0)
+//   +stall still adds random mem_stall on top of the bridge's.
+// Video mode B (Doom's frame, DOOM-6), any harness:
+//   +ppm_b=<file>        at the end, save framebuffer B (320x200) through the mode B palette
+//   +ppm_b_every=<N>     also every N cycles (the same file, overwritten), to watch a long run
+//   +notrace             no trace lines (only the HALT line): much faster for long runs (Doom)
 //
 // Trace, one line per register write, in program order (they happen in WB):
 //   PC=0x00000050 R2 <= 0x00000000
@@ -30,6 +44,7 @@
 // Cycles go to stderr, so stdout is only the trace.
 module harness_top #(
     parameter EXT_START = 0   // 1 = mips_sim_ext: run from 0x2000_0000 through the external fetch port
+                              // 2 = mips_sim_sdram: from 0x2000_0000 through ext_memory + avalon_sdram
 )(
     input clk,
     input reset,
@@ -39,19 +54,53 @@ module harness_top #(
 localparam [31:0] EXT_BASE = 32'h2000_0000;
 localparam EXT_WORDS = 65536;             // 256 KB of external text for the tests
 
-logic ext_stall = 0;
-logic [31:0] ifetch_addr, ifetch_data;
+localparam SDRAM = EXT_START == 2;
+logic ext_stall;
+logic rand_stall = 0;
+logic [31:0] ifetch_addr, ifetch_data, ifetch_next;
 logic ifetch_req, ifetch_ready;
+logic [31:0] bus_addr, bus_wdata, ext_rdata;
+logic [3:0] bus_be;
+logic bus_we, bus_re, ext_sel;
 
 life_system #(.MODE_B(1), .DEBOUNCE_CYCLES(50), .EXT_BUS(1),
               .RESET_PC(EXT_START ? EXT_BASE : 32'h0)) sys (
     .clk(clk), .reset(reset), .SW(10'd0), .KEY(2'b11), .LEDR(),
     .HEX0(), .HEX1(), .HEX2(), .HEX3(), .HEX4(), .HEX5(),
     .VGA_R(), .VGA_G(), .VGA_B(), .VGA_HS(), .VGA_VS(),
-    .bus_addr(), .bus_wdata(), .bus_we(), .bus_re(), .bus_be(), .ext_sel(),
-    .ext_rdata(32'd0), .ext_stall(ext_stall),
-    .ifetch_addr(ifetch_addr), .ifetch_req(ifetch_req),
-    .ifetch_data(ifetch_data), .ifetch_ready(ifetch_ready)
+    .bus_addr(bus_addr), .bus_wdata(bus_wdata), .bus_we(bus_we), .bus_re(bus_re), .bus_be(bus_be),
+    .ext_sel(ext_sel), .ext_rdata(SDRAM ? ext_rdata : 32'd0), .ext_stall(ext_stall),
+    .ifetch_addr(ifetch_addr), .ifetch_req(ifetch_req), .ifetch_next(ifetch_next),
+    .ifetch_data(SDRAM ? cache_data : port_data), .ifetch_ready(SDRAM ? cache_ready : port_ready)
+);
+
+// ---- EXT_START = 2: ext_memory on the behavioural SDRAM ----
+logic [31:0] cache_data, port_data;
+logic cache_ready, port_ready, bridge_stall;
+logic [25:0] avm_address;
+logic avm_read, avm_write, avm_readdatavalid, avm_waitrequest;
+logic [31:0] avm_writedata, avm_readdata;
+logic [3:0] avm_byteenable;
+int sdram_wait = 0, sdram_extra = 0;
+assign ext_stall = (SDRAM && bridge_stall) || rand_stall;
+
+ext_memory xm (
+    .clk(clk), .reset(reset),
+    .bus_addr(bus_addr), .bus_wdata(bus_wdata), .bus_be(bus_be), .bus_re(bus_re), .bus_we(bus_we),
+    .ext_sel(ext_sel && SDRAM), .ext_rdata(ext_rdata), .ext_stall(bridge_stall),
+    .ifetch_addr(ifetch_addr), .ifetch_req(ifetch_req && SDRAM), .ifetch_next(ifetch_next),
+    .ifetch_data(cache_data), .ifetch_ready(cache_ready),
+    .avm_address(avm_address), .avm_read(avm_read), .avm_write(avm_write),
+    .avm_writedata(avm_writedata), .avm_byteenable(avm_byteenable),
+    .avm_readdata(avm_readdata), .avm_readdatavalid(avm_readdatavalid),
+    .avm_waitrequest(avm_waitrequest)
+);
+
+avalon_sdram ram (
+    .clk(clk), .address(avm_address), .read(avm_read), .write(avm_write),
+    .writedata(avm_writedata), .byteenable(avm_byteenable),
+    .readdata(avm_readdata), .readdatavalid(avm_readdatavalid), .waitrequest(avm_waitrequest),
+    .wait_pct(sdram_wait), .extra(sdram_extra)
 );
 
 // ---- CPU-9: random waits ----
@@ -60,10 +109,10 @@ logic [31:0] ext_text [0:EXT_WORDS-1];
 logic [31:0] fetch_last = 32'hFFFF_FFFF;
 int fetch_count = 0;
 // Ready once the address has stayed the same for its random delay; stays ready while it does
-assign ifetch_ready = ifetch_req && ifetch_addr == fetch_last && fetch_count == 0;
-assign ifetch_data = ext_text[ifetch_addr[17:2]];
+assign port_ready = ifetch_req && ifetch_addr == fetch_last && fetch_count == 0;
+assign port_data = ext_text[ifetch_addr[17:2]];
 always @(posedge clk) begin
-    ext_stall <= stall_pct > 0 && ($urandom % 100) < stall_pct;
+    rand_stall <= stall_pct > 0 && ($urandom % 100) < stall_pct;
     if (!ifetch_req || ifetch_addr != fetch_last) begin
         fetch_last <= ifetch_req ? ifetch_addr : 32'hFFFF_FFFF;
         fetch_count <= fetch_delay > 0 ? $urandom % (fetch_delay + 1) : 0;
@@ -74,16 +123,28 @@ end
 // ---- loading: once, on the first clock edge in reset ----
 // (not in an initial block: data_memory's own initial zeroes its RAM, and the order of
 // initial blocks between modules is not defined, so it could erase the .data image)
-string program_prefix, ppm_file;
+string program_prefix, ppm_file, sdram_file, wad_file, ppm_b_file;
+longint ppm_b_every = 0;
+bit trace_on = 1;
 longint max_cycles = 10_000_000;
 bit loaded = 0;
 integer fd, i;
 
 initial begin
-    if (!$value$plusargs("program=%s", program_prefix))
-        $fatal(1, "Usage: mips_sim +program=mem/<name> [+max-cycles=N] [+ppm=file.ppm]");
+    if (!$value$plusargs("program=%s", program_prefix)) begin
+        program_prefix = "";
+        if (!SDRAM) $fatal(1, "Usage: mips_sim +program=mem/<name> [+max-cycles=N] [+ppm=file.ppm]");
+    end
+    if (!$value$plusargs("sdram=%s", sdram_file)) sdram_file = "";
+    if (!$value$plusargs("wad=%s", wad_file)) wad_file = "";
+    if (SDRAM && sdram_file == "") $fatal(1, "Usage: mips_sim_sdram +sdram=<name>_sdram.hex [+wad=file] [+program=prefix]");
+    void'($value$plusargs("sdram_wait=%d", sdram_wait));
+    void'($value$plusargs("sdram_extra=%d", sdram_extra));
     void'($value$plusargs("max-cycles=%d", max_cycles));
     if (!$value$plusargs("ppm=%s", ppm_file)) ppm_file = "";
+    if (!$value$plusargs("ppm_b=%s", ppm_b_file)) ppm_b_file = "";
+    void'($value$plusargs("ppm_b_every=%d", ppm_b_every));
+    trace_on = !$test$plusargs("notrace");
     void'($value$plusargs("stall=%d", stall_pct));
     void'($value$plusargs("fetch_delay=%d", fetch_delay));
     void'($value$plusargs("seed=%d", seed));
@@ -91,6 +152,15 @@ initial begin
 end
 
 task automatic load_banks();
+    if (SDRAM) begin
+        ram.load_words(sdram_file, 0);
+        if (wad_file != "") ram.load_bin(wad_file, 32'h0300_0000);
+        if (program_prefix == "") begin
+            for (i = 0; i < 32; i = i + 1)
+                if (i != 29) sys.cpu.rf.registers[i] = 32'd0;
+            return;
+        end
+    end
     fd = $fopen({program_prefix, "_b0.hex"}, "r");
     if (fd == 0) $fatal(1, "Can't open %s_b0.hex (build it with the assembler or make -C src/c)", program_prefix);
     $fclose(fd);
@@ -98,7 +168,7 @@ task automatic load_banks();
     $readmemh({program_prefix, "_b1.hex"}, sys.cpu.if_id.im.bank1);
     $readmemh({program_prefix, "_b2.hex"}, sys.cpu.if_id.im.bank2);
     $readmemh({program_prefix, "_b3.hex"}, sys.cpu.if_id.im.bank3);
-    if (EXT_START) begin
+    if (EXT_START == 1) begin
         for (i = 0; i < EXT_WORDS; i = i + 1) ext_text[i] = 32'd0;
         $readmemh({program_prefix, ".hex"}, ext_text);
     end
@@ -138,6 +208,15 @@ wire self_jump = sys.cpu.id_valid && sys.cpu.redirect && sys.cpu.if_id_enable &&
                  sys.cpu.redirect_pc == sys.cpu.id_pc;
 
 longint cycles = 0, steps = 0;
+// EXT_START = 2: what the external side cost (stderr at the end)
+longint cache_misses = 0, sdram_loads = 0, sdram_stores = 0, fetch_wait_cycles = 0, data_wait_cycles = 0;
+always @(posedge clk) if (SDRAM && !reset && !done) begin
+    if (xm.cache.state == 2'd1 && xm.cache.req && !xm.cache.hit) cache_misses <= cache_misses + 1;
+    if (xm.bridge.state == 2'd3 && xm.bridge.was_read) sdram_loads <= sdram_loads + 1;
+    if (xm.bridge.state == 2'd3 && !xm.bridge.was_read) sdram_stores <= sdram_stores + 1;
+    if (ifetch_req && !cache_ready && !bridge_stall) fetch_wait_cycles <= fetch_wait_cycles + 1;
+    if (bridge_stall) data_wait_cycles <= data_wait_cycles + 1;
+end
 logic [31:0] end_pc;
 logic [1:0] end_state = 0;      // 0 running, 1 self-jump seen in ID, 2 the jump finished
 integer drain = 0;
@@ -177,9 +256,35 @@ task automatic finish_now();
     flush();
     $display("HALT: %s  (steps=%0d)", end_reason, steps);
     $fwrite(32'h8000_0002, "mips_sim: %0d cycles, %0d instructions\n", cycles, steps);  // stderr
+    if (SDRAM)
+        $fwrite(32'h8000_0002, "ext_memory: %0d cache misses, %0d SDRAM loads, %0d stores; cycles waiting: %0d fetch, %0d data\n",
+                cache_misses, sdram_loads, sdram_stores, fetch_wait_cycles, data_wait_cycles);
     if (ppm_file != "") save_ppm();
+    if (ppm_b_file != "") save_ppm_b();
     done = 1;
 endtask
+
+// Framebuffer B: pixel 4n+k in bank k, word n; palette entries are {R, G, B}, 4 bits each
+task automatic save_ppm_b();
+    logic [7:0] index;
+    logic [11:0] color;
+    fd = $fopen(ppm_b_file, "w");
+    if (fd == 0) $fatal(1, "Can't write %s", ppm_b_file);
+    $fwrite(fd, "P3\n320 200\n15\n");
+    for (i = 0; i < 320 * 200; i = i + 1) begin
+        case (i % 4)
+            0: index = sys.mode_b.video_b.fb.bank0[i / 4];
+            1: index = sys.mode_b.video_b.fb.bank1[i / 4];
+            2: index = sys.mode_b.video_b.fb.bank2[i / 4];
+            default: index = sys.mode_b.video_b.fb.bank3[i / 4];
+        endcase
+        color = sys.mode_b.video_b.pal.mem[index];
+        $fwrite(fd, "%0d %0d %0d\n", color[11:8], color[7:4], color[3:0]);
+    end
+    $fclose(fd);
+endtask
+always @(posedge clk)
+    if (ppm_b_file != "" && ppm_b_every > 0 && cycles > 0 && cycles % ppm_b_every == 0) save_ppm_b();
 
 task automatic save_ppm();
     logic [11:0] px;
@@ -211,7 +316,7 @@ always @(posedge clk) if (!reset && !done) begin
     cycles <= cycles + 1;
 
     // HI/LO lines of the instruction in WB, in its place (it writes no register)
-    if (md_wb.valid && !end_pending) begin
+    if (md_wb.valid && !end_pending && trace_on) begin
         if (md_wb.op == MTHI)
             out_q.push_back($sformatf("PC=0x%s HI <= 0x%s", hex8(md_wb.pc), hex8(md_wb.hi)));
         else if (md_wb.op == MTLO)
@@ -236,7 +341,7 @@ always @(posedge clk) if (!reset && !done) begin
     if (sys.cpu.md.count == 6'd1) div_ending = 1;
 
     // The register write that happens on this edge (the register file writes on posedge)
-    if (wb_write && !end_pending)
+    if (wb_write && !end_pending && trace_on)
         out_q.push_back($sformatf("PC=0x%s R%0d <= 0x%s", hex8(wb_pc), wb_dest, hex8(wb_data)));
     if (wb_valid && !end_pending) steps = steps + 1;
     flush();
