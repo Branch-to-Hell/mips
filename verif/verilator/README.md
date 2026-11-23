@@ -7,6 +7,8 @@ Runs a program on `life_system` (the same hardware as the board: `mips_pipeline`
 | `harness_top.sv` | Wraps `life_system`, loads the program from `+program=`, prints one line per register write in WB and decides when the run ends |
 | `sim_main.cpp` | Clock (25 MHz) and reset (4 cycles), until `harness_top` sets `done` |
 | `mips_sim_ext` | The same harness built with `EXT_START=1`: it starts at `0x2000_0000` and fetches through the external port (CPU-9) |
+| `mips_sim_sdram` | Built with `EXT_START=2`: the real external side, `rtl/ext_memory.v` (SDRAM bridge PLT-8 + instruction cache PLT-12), on `avalon_sdram.sv`, starting at `0x2000_0000` like `top_doom` after `boot.S` |
+| `avalon_sdram.sv` | Behavioural SDRAM (64 MB) behind `sdram_sys`'s Avalon interface: random `waitrequest` and read latency, pipelined reads in order, little-endian byte lanes |
 | `Makefile` | Builds the simulator (default target), `run` and `compare` |
 
 ## Install and build
@@ -64,6 +66,31 @@ make -C verif/verilator compare-ext PROG=tc4_rtype FETCH=6 STALL=20  # fetch eve
 - `SEED=<S>` makes a run repeatable (`+seed=S`).
 
 Checked on Nov 22: `compare` with STALL 10/30/60 for `tc4_rtype tc4_memory tc5_load_use tc5_branch_hazards tc5_jump_hazards count_value_in1 test_stack test_halt hello_pixels test_libc test_bus`, and `compare-ext` with FETCH 0/3/6 (and STALL 30) for every `tc4_*`, `tc5_*`, `count_value_in1/2`, `test_stack`, `test_pseudo`, `test_halt`: all the same trace. `test_libc` takes 128k cycles without waits and 315k with STALL=60, for the same 83,050 instructions.
+
+## PLT-8 / PLT-12: the SDRAM side
+
+```
+make -C verif/verilator compare-sdram PROG=test_libc WAIT=30 EXTRA=4      # src/c/<PROG>.c linked like Doom
+make -C verif/verilator compare-sdram-asm PROG=tc4_rtype WAIT=40 EXTRA=6  # an .asm run from the SDRAM
+build/verilator/mips_sim_sdram +sdram=<image>_sdram.hex [+wad=<file>] [+sdram_wait=P] [+sdram_extra=N]
+```
+
+- `compare-sdram` links `src/c/<PROG>.c` with `src/doom/link_sdram.ld` (code, data, `.bss` and heap in the SDRAM, stack on chip), writes `build/verilator/sdram/<PROG>_sdram.hex` with `elf2hex.py --sdram`, runs it on `mips_sim_sdram` and compares with `ref_sim.py --sdram`.
+- `WAIT=<P>`: `waitrequest` = 1 in P% of the cycles (`+sdram_wait`). `EXTRA=<N>`: read latency 5 to 5+N cycles (`+sdram_extra`). `STALL` still adds random `mem_stall` on top.
+- `+wad=<file>` loads a binary file at SDRAM offset `0x0300_0000` (`0x2300_0000`), like `wad_load.tcl`.
+- At the end, stderr also says what the SDRAM cost: `ext_memory: <n> cache misses, <n> SDRAM loads, <n> stores; cycles waiting: <n> fetch, <n> data`.
+
+Checked on Nov 22: `compare-sdram` for `test_libc`, `test_bus` and `hello_pixels` with (WAIT, EXTRA, STALL) = (0, 0, 0), (30, 4, 0) and (60, 8, 30), and `compare-sdram-asm` with WAIT 0 and 40 for every `tc4_*`, `tc5_*`, `count_value_in1/2/3`, `tc16_trace`, `test_pseudo`, `test_rtype`, `test_stack`: all the same trace. A swapped `byteenable` in the bridge makes `test_bus` fail. `test_libc` from the SDRAM: 527k instructions in 1.45M cycles, 1,089 cache misses; most of the waiting is the ~8 cycles of each SDRAM load (83k loads).
+Doom (with DOOM-3's WAD in memory) on `mips_sim_sdram`, Nov 22: by 200M cycles (8 s of the board at 25 MHz) it is already past the title screen and playing the E1M1 demo, at ~1.6M simulated cycles per second with `+notrace`:
+
+```
+build/verilator/mips_sim_sdram +sdram=build/doom/doom_sdram.hex +wad=build/wad/doom1.wad \
+    +notrace +max-cycles=400000000 +ppm_b=build/doom6/frame_b.ppm +ppm_b_every=50000000
+```
+
+- `+ppm_b=<file>` saves framebuffer B (320×200) through the mode B palette at the end, and every `+ppm_b_every` cycles. `+notrace` drops the trace lines (only `HALT:`), for long runs.
+
+The same hardware on the real Intel SDRAM controller: `verif/doom_mem.do` in ModelSim (`src/programs/test_ext.s`, PASS with 9 cache misses, the expected number).
 
 ## What is checked (Nov 22)
 
