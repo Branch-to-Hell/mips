@@ -8,6 +8,7 @@ Runs a program on `life_system` (the same hardware as the board: `mips_pipeline`
 | `sim_main.cpp` | Clock (25 MHz) and reset (4 cycles), until `harness_top` sets `done` |
 | `mips_sim_ext` | The same harness built with `EXT_START=1`: it starts at `0x2000_0000` and fetches through the external port (CPU-9) |
 | `mips_sim_sdram` | Built with `EXT_START=2`: the real external side, `rtl/ext_memory.v` (SDRAM bridge PLT-8 + instruction cache PLT-12), on `avalon_sdram.sv`, starting at `0x2000_0000` like `top_doom` after `boot.S` |
+| `mips_sim_boot` | Built with `EXT_START=3`: like `mips_sim_sdram` but it starts at `0x0` with the on-chip boot code, like `top_doom` (DOOM-7 rehearsal) |
 | `avalon_sdram.sv` | Behavioural SDRAM (64 MB) behind `sdram_sys`'s Avalon interface: random `waitrequest` and read latency, pipelined reads in order, little-endian byte lanes |
 | `Makefile` | Builds the simulator (default target), `run` and `compare` |
 
@@ -81,16 +82,34 @@ build/verilator/mips_sim_sdram +sdram=<image>_sdram.hex [+wad=<file>] [+sdram_wa
 - At the end, stderr also says what the SDRAM cost: `ext_memory: <n> cache misses, <n> SDRAM loads, <n> stores; cycles waiting: <n> fetch, <n> data`.
 
 Checked on Nov 22: `compare-sdram` for `test_libc`, `test_bus` and `hello_pixels` with (WAIT, EXTRA, STALL) = (0, 0, 0), (30, 4, 0) and (60, 8, 30), and `compare-sdram-asm` with WAIT 0 and 40 for every `tc4_*`, `tc5_*`, `count_value_in1/2/3`, `tc16_trace`, `test_pseudo`, `test_rtype`, `test_stack`: all the same trace. A swapped `byteenable` in the bridge makes `test_bus` fail. `test_libc` from the SDRAM: 527k instructions in 1.45M cycles, 1,089 cache misses; most of the waiting is the ~8 cycles of each SDRAM load (83k loads).
-Doom (with DOOM-3's WAD in memory) on `mips_sim_sdram`, Nov 22: by 200M cycles (8 s of the board at 25 MHz) it is already past the title screen and playing the E1M1 demo, at ~1.6M simulated cycles per second with `+notrace`:
-
-```
-build/verilator/mips_sim_sdram +sdram=build/doom/doom_sdram.hex +wad=build/wad/doom1.wad \
-    +notrace +max-cycles=400000000 +ppm_b=build/doom6/frame_b.ppm +ppm_b_every=50000000
-```
-
-- `+ppm_b=<file>` saves framebuffer B (320×200) through the mode B palette at the end, and every `+ppm_b_every` cycles. `+notrace` drops the trace lines (only `HALT:`), for long runs.
-
 The same hardware on the real Intel SDRAM controller: `verif/doom_mem.do` in ModelSim (`src/programs/test_ext.s`, PASS with 9 cache misses, the expected number).
+
+## DOOM-6 / DOOM-7: Doom
+
+Needs the WAD at `build/wad/doom1.wad` (or `WAD=<path>`), see `src/doom/README.md`.
+
+```
+make -C verif/verilator doom [FRAMES=3]   # build Doom, run it on mips_sim_sdram, save its first frames
+make -C verif/verilator doom-check        # also frame 0 against the PC reference (host build, DOOM-1)
+make -C verif/verilator doom-boot         # like the board: boot.S on chip, KEY0, then Doom (mips_sim_boot)
+```
+
+- Frames go to `build/verilator/doom/frame_NNN.ppm` (and `frame_000.png`): one each time `doomgeneric_Tick` starts (`+snap_pc`), when the previous Tick has drawn its frame and written its palette. Frame 0 is the title screen.
+- `doom-check` runs `make -C src/doom host-run` and compares frame 0 with the PC's frame 0 at 4 bits per color (what mode B's palette keeps): `src/tools/frame_compare.py`.
+- `doom-boot` uses `mips_sim_boot` (`EXT_START=3`): the same hardware, starting at `0x0` with `mem/doom_boot` (`boot.S`) like `top_doom`; `doom_boot_inputs.txt` presses KEY0 at cycle 20,000.
+- Harness options for this: `+snap_pc=<hex> +snap_skip=K +snap_max=N +snap_prefix=<path>`, `+inputs=<file>` (lines `<cycle> <SW hex> <KEY0> <KEY1>`), `+ppm_b=<file>` / `+ppm_b_every=N`, `+notrace` (no trace lines: ~1.6M simulated cycles per second). See the header of `harness_top.sv`.
+
+Checked on Nov 23:
+
+| What | Result |
+|---|---|
+| `doom-check` | `MATCH`: frame 0 (TITLEPIC) is the PC's title screen, pixel by pixel at 4 bits per color. Reached at 42.1M cycles (16.1M instructions) = **1.7 s after KEY0** on the board at 25 MHz |
+| `doom-boot` | `MATCH` too: `boot.S` waits, KEY0, `jr` to `0x2000_0000`, the same title screen 42.1M cycles later |
+| Title frames | 1.3M cycles each (~19 per second at 25 MHz) |
+| Demo (attract mode, E1M1), from 162M cycles | **~4.2 frames per second** at 25 MHz: 6.0M cycles per frame on average (5.0M to 8.2M), 65 frames measured. The game runs at the right speed (the timer is real), the picture is choppy |
+
+Where the 600M cycles of that run go (stderr): 30% instructions (177M), **52% waiting for SDRAM loads/stores** (35.5M loads, 13.3M stores), 3% waiting for the instruction cache (1.7M misses), ~15% hazard and multiply/divide bubbles. So a data cache in `ext_memory` is the biggest speed-up left; forwarding (CPU-10) is second (see issue #13).
+The title screen and frame 150 of the demo: `docs/evidence/2026-11-23_doom6_title_verilator.png`, `docs/evidence/2026-11-23_doom6_demo_verilator.png`.
 
 ## What is checked (Nov 22)
 
