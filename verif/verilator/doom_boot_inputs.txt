@@ -1,0 +1,7 @@
+# DOOM-7 rehearsal (make -C verif/verilator doom-boot): inputs for mips_sim_boot (+inputs=)
+# <cycle> <SW hex> <KEY0> <KEY1>   (KEYn: 1 = pressed; life_system debounces them, 50 cycles here)
+# boot.S waits for KEY0 on chip while the SDRAM already holds the image and the WAD (on the board:
+# loaded over JTAG); the ext_memory cache is still clearing its tags in the first 512 cycles.
+0       000 0 0
+20000   000 1 0
+21000   000 0 0

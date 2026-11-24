@@ -2,7 +2,8 @@
 # that it arrived byte-exact. Uses the JTAG to Avalon Master inside sdram_sys (PLT-10):
 #     PC --USB-Blaster/JTAG--> jtag master --Avalon--> SDRAM controller --> SDRAM
 #
-# The board must be running a design that contains sdram_sys (today: revision sdram_test).
+# The board must be running a design that contains sdram_sys: revision sdram_test or top_doom
+# (Doom: docs/doom-lab-checklist.md, image doom.bin at offset 0, then the WAD at the default offset).
 # In sdram_test, set SW9 = 1 first (LEDR8 on): otherwise a reset or KEY0 starts the smoke
 # test, which writes all 64 MB and erases the file.
 #

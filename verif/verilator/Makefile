@@ -10,6 +10,10 @@
 # behavioural SDRAM (avalon_sdram.sv), with random SDRAM timing:
 #     make -C verif/verilator compare-sdram PROG=test_libc WAIT=30 EXTRA=4   # src/c/<PROG>.c linked at 0x2000_0000
 #     make -C verif/verilator compare-sdram-asm PROG=tc4_rtype WAIT=30        # an .asm run from the SDRAM
+# DOOM-6 / DOOM-7: Doom on the same hardware (needs the WAD, src/doom/README.md):
+#     make -C verif/verilator doom [FRAMES=3]       # build Doom, run it, save its first frames (title screen)
+#     make -C verif/verilator doom-check            # frame 0 against the PC reference (make -C src/doom host-run)
+#     make -C verif/verilator doom-boot             # like the board: boot.S on chip, KEY0, then Doom
 # Or call the simulators directly, from the repo root:
 #     build/verilator/mips_sim +program=mem/<name> [+max-cycles=N] [+ppm=file.ppm] [+stall=P] [+seed=S]
 #     build/verilator/mips_sim_ext +program=<prefix> [+fetch_delay=N] [+stall=P] [+seed=S]
@@ -20,13 +24,14 @@ BUILD   := $(ROOT)/build/verilator
 SIM     := $(BUILD)/mips_sim
 SIM_EXT := $(BUILD)/mips_sim_ext
 SIM_SDRAM := $(BUILD)/mips_sim_sdram
+SIM_BOOT := $(BUILD)/mips_sim_boot
 PYTHON  ?= python3
 
 # life_system with mode B and what it instantiates (no PLL or board top-levels)
 RTL := $(addprefix $(ROOT)/rtl/, life_system.v mips_pipeline.v mult_div.v hazard_unit.v if_id_register.v \
        pipeline_register.v instruction_memory.v control_unit.v alu_control.v register_file.v alu.v \
        data_memory.v debounce.v hex7seg.v hex_debug.v mmio.v vga_sync.v framebuffer_a.v \
-       video_mode_a.v framebuffer_b.v palette.v video_mode_b.v        ext_memory.v sdram_bridge.v icache.v)
+       video_mode_a.v framebuffer_b.v palette.v video_mode_b.v ext_memory.v sdram_bridge.v icache.v)
 SOURCES := $(CURDIR)/harness_top.sv $(CURDIR)/avalon_sdram.sv $(CURDIR)/sim_main.cpp $(RTL)
 
 # The RTL is written for ModelSim and Quartus: Verilator's style warnings (widths, unused
@@ -46,20 +51,24 @@ TRACE := $(BUILD)/$(PROG)
 EXT   := $(BUILD)/ext
 SD    := $(BUILD)/sdram
 
-.PHONY: all run compare compare-ext compare-sdram compare-sdram-asm clean
-all: $(SIM) $(SIM_EXT) $(SIM_SDRAM)
+.PHONY: all run compare compare-ext compare-sdram compare-sdram-asm doom doom-check doom-boot clean
+all: $(SIM) $(SIM_EXT) $(SIM_SDRAM) $(SIM_BOOT)
 
-$(SIM): harness_top.sv sim_main.cpp $(RTL)
+$(SIM): harness_top.sv avalon_sdram.sv sim_main.cpp $(RTL)
 	mkdir -p $(BUILD)
 	verilator $(VFLAGS) -Mdir $(BUILD)/obj_dir -o $(SIM) $(SOURCES)
 
-$(SIM_EXT): harness_top.sv sim_main.cpp $(RTL)
+$(SIM_EXT): harness_top.sv avalon_sdram.sv sim_main.cpp $(RTL)
 	mkdir -p $(BUILD)
 	verilator $(VFLAGS) -GEXT_START=1 -Mdir $(BUILD)/obj_dir_ext -o $(SIM_EXT) $(SOURCES)
 
 $(SIM_SDRAM): harness_top.sv avalon_sdram.sv sim_main.cpp $(RTL)
 	mkdir -p $(BUILD)
 	verilator $(VFLAGS) -GEXT_START=2 -Mdir $(BUILD)/obj_dir_sdram -o $(SIM_SDRAM) $(SOURCES)
+
+$(SIM_BOOT): harness_top.sv avalon_sdram.sv sim_main.cpp $(RTL)
+	mkdir -p $(BUILD)
+	verilator $(VFLAGS) -GEXT_START=3 -Mdir $(BUILD)/obj_dir_boot -o $(SIM_BOOT) $(SOURCES)
 
 run: $(SIM)
 	cd $(ROOT) && $(SIM) +program=mem/$(PROG) $(WAITS)
@@ -85,11 +94,14 @@ compare-ext: $(SIM_EXT)
 compare-sdram: $(SIM_SDRAM)
 	mkdir -p $(SD)
 	$(MAKE) -s -C $(ROOT)/src/c ../../build/c/crt0.o ../../build/c/$(PROG).o ../../build/c/libc.a
-	cd $(ROOT) && mips-linux-gnu-gcc -march=mips1 -mabi=32 -msoft-float -mno-abicalls -fno-pic -G0 -EB 	    -nostdlib -nostartfiles -static -Wl,--gc-sections -Wl,--build-id=none -Wl,--no-warn-rwx-segments 	    -T src/doom/link_sdram.ld build/c/crt0.o build/c/$(PROG).o build/c/libc.a -lgcc -o $(SD)/$(PROG).elf
+	cd $(ROOT) && mips-linux-gnu-gcc -march=mips1 -mabi=32 -msoft-float -mno-abicalls -fno-pic -G0 -EB \
+	    -nostdlib -nostartfiles -static -Wl,--gc-sections -Wl,--build-id=none -Wl,--no-warn-rwx-segments \
+	    -T src/doom/link_sdram.ld build/c/crt0.o build/c/$(PROG).o build/c/libc.a -lgcc -o $(SD)/$(PROG).elf
 	cd $(ROOT) && $(PYTHON) src/tools/elf2hex.py $(SD)/$(PROG).elf --sdram -o $(SD) --isa > /dev/null
 	cd $(ROOT) && $(SIM_SDRAM) +sdram=$(SD)/$(PROG)_sdram.hex $(SDRAM_WAITS) | grep -v '^HALT:' > $(SD)/$(PROG).cpu.txt
 	cd $(ROOT) && $(PYTHON) src/tools/ref_sim.py $(SD)/$(PROG)_sdram.hex --sdram --max-steps 5000000 | grep -v '^HALT:' > $(SD)/$(PROG).ref.txt
-	diff $(SD)/$(PROG).ref.txt $(SD)/$(PROG).cpu.txt && 	    echo "PASS: $(PROG) in the SDRAM: $$(wc -l < $(SD)/$(PROG).cpu.txt) register writes, same trace as ref_sim.py"
+	diff $(SD)/$(PROG).ref.txt $(SD)/$(PROG).cpu.txt && \
+	    echo "PASS: $(PROG) in the SDRAM: $$(wc -l < $(SD)/$(PROG).cpu.txt) register writes, same trace as ref_sim.py"
 
 # An .asm program run from the SDRAM (its .data stays on chip)
 compare-sdram-asm: $(SIM_SDRAM)
@@ -97,7 +109,42 @@ compare-sdram-asm: $(SIM_SDRAM)
 	cd $(ROOT) && $(PYTHON) src/assembler/assembler.py src/programs/$(PROG).asm -o $(SD) --text-base 0x20000000 > /dev/null
 	cd $(ROOT) && $(SIM_SDRAM) +sdram=$(SD)/$(PROG).hex +program=$(SD)/$(PROG) $(SDRAM_WAITS) | grep -v '^HALT:' > $(SD)/$(PROG).cpu.txt
 	cd $(ROOT) && $(PYTHON) src/tools/ref_sim.py $(SD)/$(PROG).hex --text-base 0x20000000 | grep -v '^HALT:' > $(SD)/$(PROG).ref.txt
-	diff $(SD)/$(PROG).ref.txt $(SD)/$(PROG).cpu.txt && 	    echo "PASS: $(PROG) from the SDRAM: $$(wc -l < $(SD)/$(PROG).cpu.txt) register writes, same trace as ref_sim.py"
+	diff $(SD)/$(PROG).ref.txt $(SD)/$(PROG).cpu.txt && \
+	    echo "PASS: $(PROG) from the SDRAM: $$(wc -l < $(SD)/$(PROG).cpu.txt) register writes, same trace as ref_sim.py"
+
+# ---- DOOM-6: Doom on mips_sim_sdram until its first frames ----
+# A frame is saved each time doomgeneric_Tick starts (the previous Tick drew it, palette included);
+# the first Tick has drawn nothing yet, so it is skipped. Frame 0 is the title screen.
+WAD    ?= $(ROOT)/build/wad/doom1.wad
+FRAMES ?= 1
+DOOM_CYCLES ?= 2000000000
+DOOM   := $(BUILD)/doom
+TICK_PC = $$(mips-linux-gnu-nm $(ROOT)/build/doom/doom.elf | awk '$$3 == "doomgeneric_Tick" {print $$1}')
+
+doom: $(SIM_SDRAM)
+	@test -f $(WAD) || { echo "No WAD at $(WAD): see src/doom/README.md"; exit 1; }
+	$(MAKE) -s -C $(ROOT)/src/doom
+	mkdir -p $(DOOM)
+	cd $(ROOT) && $(SIM_SDRAM) +sdram=build/doom/doom_sdram.hex +wad=$(WAD) +notrace +max-cycles=$(DOOM_CYCLES) \
+	    +snap_pc=$(TICK_PC) +snap_skip=1 +snap_max=$(FRAMES) +snap_prefix=$(DOOM)/frame $(SDRAM_WAITS) \
+	    > $(DOOM)/run.txt 2>&1; cat $(DOOM)/run.txt
+	$(PYTHON) $(ROOT)/src/tools/frame_compare.py $(DOOM)/frame_000.ppm --png $(DOOM)/frame_000.png
+
+# Frame 0 against the same frame from the host build (DOOM-1), at mode B's 4 bits per color
+doom-check: doom
+	$(MAKE) -s -C $(ROOT)/src/doom host-run WAD=$(WAD) FRAMES=1
+	$(PYTHON) $(ROOT)/src/tools/frame_compare.py $(DOOM)/frame_000.ppm $(ROOT)/build/doom/host/frame_000.ppm
+
+# DOOM-7 rehearsal: top_doom's start. boot.S (mem/doom_boot) waits for KEY0 on chip, KEY0 goes down
+# at cycle 20000 (doom_boot_inputs.txt), boot.S jumps to 0x2000_0000 and Doom draws its title screen.
+doom-boot: $(SIM_BOOT)
+	@test -f $(WAD) || { echo "No WAD at $(WAD): see src/doom/README.md"; exit 1; }
+	$(MAKE) -s -C $(ROOT)/src/doom
+	mkdir -p $(DOOM)
+	cd $(ROOT) && $(SIM_BOOT) +program=mem/doom_boot +sdram=build/doom/doom_sdram.hex +wad=$(WAD) \
+	    +inputs=verif/verilator/doom_boot_inputs.txt +notrace +max-cycles=$(DOOM_CYCLES) \
+	    +snap_pc=$(TICK_PC) +snap_skip=1 +snap_max=1 +snap_prefix=$(DOOM)/boot > $(DOOM)/boot.txt 2>&1; cat $(DOOM)/boot.txt
+	$(PYTHON) $(ROOT)/src/tools/frame_compare.py $(DOOM)/boot_000.ppm --png $(DOOM)/boot_000.png
 
 clean:
 	rm -rf $(BUILD)
