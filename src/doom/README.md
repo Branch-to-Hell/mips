@@ -1,4 +1,4 @@
-# Doom (DOOM-1, DOOM-3, DOOM-5)
+# Doom (DOOM-1, DOOM-3, DOOM-5, DOOM-8)
 
 [doomgeneric](https://github.com/ozkl/doomgeneric) (commit `e257a09`, GPL-2.0, see `doomgeneric/LICENSE`) built for our CPU and linked into the SDRAM region. Memory map, build flags and why: `docs/contracts.md`, "Doom memory" and "Tool settings".
 
@@ -7,7 +7,8 @@
 | `doomgeneric/` | doomgeneric's 80 source files and its headers, without the platform backends (SDL, X11, Windows…). One change: `PACKEDATTR` is empty on MIPS (`doomtype.h`, marked with a comment) |
 | `doomgeneric_mips.c` | Our platform layer (DOOM-2) and `main`, which registers the WAD in the SDRAM as a file (DOOM-3) |
 | `wad_mem.c`, `.h` | `wad_size()`: the size of a WAD in memory, from its header and directory (DOOM-3) |
-| `host/` | The same Doom on the PC without a window, the reference frames (DOOM-1) |
+| `input_map.c`, `.h` | Switches and KEY0 -> Doom key events, shared by the board and the PC (DOOM-8) |
+| `host/` | The same Doom on the PC without a window, the reference frames (DOOM-1), the switch script test and `test_input_map.c` (DOOM-8) |
 | `link_sdram.ld` | Linker script: everything from `0x2000_0000`, heap up to the WAD at `0x2300_0000`, stack on chip (top `0x1001_3FF0`) |
 | `boot.S` | Boot code for the on-chip text of `top_doom`: waits for KEY0, then `jr` to `0x2000_0000` |
 | `Makefile` | Builds all of it |
@@ -58,6 +59,36 @@ make -C src/doom host-run                # WAD=build/wad/doom1.wad FRAMES=40 by 
 
 Result (Nov 22): Doom prints its whole start-up (`Z_Init` … `ST_Init`, `I_InitGraphics: ... 320 x 200`) and **the very first frame (`frame_000.ppm`) is the title screen** (`TITLEPIC`); frames 1–59 are the same image (the title stays for 170 tics, ~5 s, before the demo). So for DOOM-6 and DOOM-7, the first `DG_DrawFrame` is the goal: everything before it is start-up.
 
+## Controls (DOOM-8)
+
+Doom on the board has 10 switches and KEY0 (KEY1 is the CPU reset in `top_doom`). The mapping is the contract in `docs/contracts.md`, "Doom controls":
+
+| Input | Doom key (doomgeneric's default binding) | Kind |
+|---|---|---|
+| SW0 | forward (`KEY_UPARROW`; menus: up) | held |
+| SW1 | back (`KEY_DOWNARROW`; menus: down) | held |
+| SW2 | turn left (`KEY_LEFTARROW`) | held |
+| SW3 | turn right (`KEY_RIGHTARROW`) | held |
+| SW4 | run (`KEY_RSHIFT`, `key_speed`) | held |
+| SW5 | use / open doors (`KEY_USE`) | held |
+| SW6 | Enter (`KEY_ENTER`: opens the menu on the title/demo, selects in menus) | momentary |
+| SW7 | Escape (`KEY_ESCAPE`: menu on/off, back) | momentary |
+| SW8 | strafe (`KEY_RALT`, `key_strafe`): with SW2/SW3 the player moves sideways | held |
+| SW9 | next weapon (`]`, bound to `key_nextweapon` by `main`) | momentary |
+| KEY0 | fire (`KEY_FIRE`) | held |
+
+Held inputs send key down when they go to 1 and key up when they go back to 0. Momentary ones (SW6, SW7, SW9) send key down when the switch goes up and key up on the next tic; leave them up and nothing repeats. **To start a game:** SW6 up and down 4 times (menu, New Game, Knee-Deep in the Dead, Hurt Me Plenty).
+
+Checks on the PC, with the same `input_map.c` (`main` also binds `key_nextweapon` the same way):
+
+```
+make -C src/doom input-test      # the event logic: edges, momentary keys, ordering -> PASS: input_map, 24 tics
+make -C src/doom host-input      # host/inputs_new_game.txt: menu -> new game -> walk, run, turn, fire, strafe
+make -C src/doom host-run INPUTS=<script> FRAMES=<n>   # any other script
+```
+
+Script lines are `<frame> <SW mask in hex> <KEY0>`; the inputs hold until the next line (one frame = one tic here). Result (Nov 23): Enter at frame 20 opens the menu, the 4th Enter starts E1M1 at frame 66; then the player walks, turns, fires (ammo 50 -> 49) and strafes. Key frames: `build/doom/host/doom8_inputs.png` and `input_NNN.png` (made from the PPMs).
+
 ## Sizes (Nov 22)
 
 | Part | Size |
@@ -75,7 +106,7 @@ Nothing comes from the cross compiler's `libgcc.a` (it is MIPS32 with an FPU): s
 - `DG_Init`: points `DG_ScreenBuffer` at framebuffer B (`0x1005_0000`) and turns on video mode B. `I_FinishUpdate` then copies Doom's frame line by line straight into it.
 - `DG_DrawFrame`: writes Doom's palette to the mode B palette when it changes.
 - `DG_GetTicksMs`, `DG_SleepMs`: the MMIO timer (milliseconds).
-- `DG_GetKey`: no keys yet (DOOM-8).
+- `DG_GetKey`: reads SW and KEY0, mirrors SW on LEDR and returns the events of `input_map.c` (DOOM-8, below).
 - `main`: `doomgeneric_Create` with `-iwad doom1.wad`, then `doomgeneric_Tick` forever.
 
 ## What's next
