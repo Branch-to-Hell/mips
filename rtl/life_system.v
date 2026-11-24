@@ -45,6 +45,7 @@ module life_system #(
     output [31:0] ifetch_addr,
     output ifetch_req,
     output [31:0] ifetch_next,          // PLT-12: ifetch_addr after this edge (cache RAM address)
+    output [31:0] bus_addr_next,        // data cache: bus_addr after this edge (cache RAM address)
     input [31:0] ifetch_data,
     input ifetch_ready
 );
@@ -90,7 +91,7 @@ mips_pipeline #(.IMEM_INIT(IMEM_INIT), .RESET_PC(RESET_PC), .EXT_TEXT(EXT_BUS)) 
     .mem_addr(mem_addr), .mem_wdata(mem_wdata),
     .mem_we(mem_we), .mem_re(mem_re), .mem_be(mem_be), .mem_rdata(mem_rdata), .mem_fault(mem_fault),
     .mem_stall(EXT_BUS ? ext_stall : 1'b0),
-    .ifetch_addr(ifetch_addr), .ifetch_req(ifetch_req), .ifetch_next(ifetch_next),
+    .ifetch_addr(ifetch_addr), .ifetch_req(ifetch_req), .ifetch_next(ifetch_next), .mem_addr_next(bus_addr_next),
     .ifetch_data(ifetch_data), .ifetch_ready(EXT_BUS ? ifetch_ready : 1'b0),
     .dbg_sel(SW[4:0]), .dbg_value(dbg_value),
     .halted(halted), .halt_cause(halt_cause), .halt_pc(halt_pc), .halt_addr(halt_addr)
