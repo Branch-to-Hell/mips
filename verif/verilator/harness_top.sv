@@ -24,10 +24,24 @@
 //   +sdram_wait=<P>      waitrequest = 1 in P% of the cycles (default 0)
 //   +sdram_extra=<N>     read latency 5 to 5+N cycles (default 0)
 //   +stall still adds random mem_stall on top of the bridge's.
+// mips_sim_boot (EXT_START = 3, DOOM-7): the same hardware as mips_sim_sdram, but it starts at 0x0
+// like top_doom, running the on-chip boot code (+program=mem/doom_boot: waits for KEY0, then jr
+// to 0x2000_0000). Press KEY0 with +inputs.
+// Inputs (any harness; default SW = 0, no key pressed):
+//   +inputs=<file>       lines "<cycle> <SW hex> <KEY0> <KEY1>" (KEYn: 1 = pressed), in cycle
+//                        order; from that cycle on, the board inputs have those values.
+//                        '#' starts a comment. Keys go through life_system's debounce
+//                        (50 cycles here), so hold a key for more than that.
 // Video mode B (Doom's frame, DOOM-6), any harness:
 //   +ppm_b=<file>        at the end, save framebuffer B (320x200) through the mode B palette
 //   +ppm_b_every=<N>     also every N cycles (the same file, overwritten), to watch a long run
 //   +notrace             no trace lines (only the HALT line): much faster for long runs (Doom)
+//   +snap_pc=<hex>       every time the instruction at this PC finishes (WB), save framebuffer B
+//   +snap_prefix=<path>  as <path>_NNN.ppm (default build/verilator/snap), N = 0, 1, ...; skips
+//   +snap_skip=<K>       the first K hits (default 0) and ends the run after
+//   +snap_max=<N>        N saved frames (default 1). stderr gets "snap N at cycle C" each time.
+//                        Doom: snap_pc = doomgeneric_Tick: on its entry the previous frame is
+//                        complete, palette included (DG_DrawFrame writes the palette).
 //
 // Trace, one line per register write, in program order (they happen in WB):
 //   PC=0x00000050 R2 <= 0x00000000
@@ -45,6 +59,7 @@
 module harness_top #(
     parameter EXT_START = 0   // 1 = mips_sim_ext: run from 0x2000_0000 through the external fetch port
                               // 2 = mips_sim_sdram: from 0x2000_0000 through ext_memory + avalon_sdram
+                              // 3 = mips_sim_boot: the same, from 0x0 (boot code on chip, like top_doom)
 )(
     input clk,
     input reset,
@@ -54,7 +69,7 @@ module harness_top #(
 localparam [31:0] EXT_BASE = 32'h2000_0000;
 localparam EXT_WORDS = 65536;             // 256 KB of external text for the tests
 
-localparam SDRAM = EXT_START == 2;
+localparam SDRAM = EXT_START >= 2;
 logic ext_stall;
 logic rand_stall = 0;
 logic [31:0] ifetch_addr, ifetch_data, ifetch_next;
@@ -62,10 +77,12 @@ logic ifetch_req, ifetch_ready;
 logic [31:0] bus_addr, bus_wdata, ext_rdata;
 logic [3:0] bus_be;
 logic bus_we, bus_re, ext_sel;
+logic [9:0] sw = 0;
+logic [1:0] key = 0;                      // 1 = pressed (the board's KEY pins are active-low)
 
 life_system #(.MODE_B(1), .DEBOUNCE_CYCLES(50), .EXT_BUS(1),
-              .RESET_PC(EXT_START ? EXT_BASE : 32'h0)) sys (
-    .clk(clk), .reset(reset), .SW(10'd0), .KEY(2'b11), .LEDR(),
+              .RESET_PC((EXT_START == 1 || EXT_START == 2) ? EXT_BASE : 32'h0)) sys (
+    .clk(clk), .reset(reset), .SW(sw), .KEY(~key), .LEDR(),
     .HEX0(), .HEX1(), .HEX2(), .HEX3(), .HEX4(), .HEX5(),
     .VGA_R(), .VGA_G(), .VGA_B(), .VGA_HS(), .VGA_VS(),
     .bus_addr(bus_addr), .bus_wdata(bus_wdata), .bus_we(bus_we), .bus_re(bus_re), .bus_be(bus_be),
@@ -123,7 +140,32 @@ end
 // ---- loading: once, on the first clock edge in reset ----
 // (not in an initial block: data_memory's own initial zeroes its RAM, and the order of
 // initial blocks between modules is not defined, so it could erase the .data image)
-string program_prefix, ppm_file, sdram_file, wad_file, ppm_b_file;
+string program_prefix, ppm_file, sdram_file, wad_file, ppm_b_file, inputs_file, snap_prefix;
+logic [31:0] snap_pc = 32'hFFFF_FFFF;
+int snap_skip = 0, snap_max = 1, snap_hits = 0, snap_saved = 0;
+
+// ---- inputs: a schedule of SW/KEY values ----
+typedef struct { longint cycle; logic [9:0] sw; logic [1:0] key; } input_t;
+input_t input_q[$];
+task automatic load_inputs();
+    int ifd, n;
+    string line;
+    input_t v;
+    longint c;
+    int sw_v, k0, k1;
+    ifd = $fopen(inputs_file, "r");
+    if (ifd == 0) $fatal(1, "Can't open %s", inputs_file);
+    while ($fgets(line, ifd) > 0) begin
+        if (line.len() == 0 || line.getc(0) == "#") continue;
+        n = $sscanf(line, "%d %h %d %d", c, sw_v, k0, k1);
+        if (n == 4) begin
+            v.cycle = c; v.sw = sw_v[9:0]; v.key = {k1[0], k0[0]};
+            input_q.push_back(v);
+        end
+    end
+    $fclose(ifd);
+    $fwrite(32'h8000_0002, "inputs: %0d changes from %s\n", input_q.size(), inputs_file);
+endtask
 longint ppm_b_every = 0;
 bit trace_on = 1;
 longint max_cycles = 10_000_000;
@@ -138,6 +180,12 @@ initial begin
     if (!$value$plusargs("sdram=%s", sdram_file)) sdram_file = "";
     if (!$value$plusargs("wad=%s", wad_file)) wad_file = "";
     if (SDRAM && sdram_file == "") $fatal(1, "Usage: mips_sim_sdram +sdram=<name>_sdram.hex [+wad=file] [+program=prefix]");
+    if (EXT_START == 3 && program_prefix == "") $fatal(1, "Usage: mips_sim_boot +program=mem/doom_boot +sdram=... [+wad=...] +inputs=...");
+    if ($value$plusargs("inputs=%s", inputs_file)) load_inputs();
+    if (!$value$plusargs("snap_prefix=%s", snap_prefix)) snap_prefix = "build/verilator/snap";
+    void'($value$plusargs("snap_pc=%h", snap_pc));
+    void'($value$plusargs("snap_skip=%d", snap_skip));
+    void'($value$plusargs("snap_max=%d", snap_max));
     void'($value$plusargs("sdram_wait=%d", sdram_wait));
     void'($value$plusargs("sdram_extra=%d", sdram_extra));
     void'($value$plusargs("max-cycles=%d", max_cycles));
@@ -266,10 +314,13 @@ endtask
 
 // Framebuffer B: pixel 4n+k in bank k, word n; palette entries are {R, G, B}, 4 bits each
 task automatic save_ppm_b();
+    write_ppm_b(ppm_b_file);
+endtask
+task automatic write_ppm_b(input string file);
     logic [7:0] index;
     logic [11:0] color;
-    fd = $fopen(ppm_b_file, "w");
-    if (fd == 0) $fatal(1, "Can't write %s", ppm_b_file);
+    fd = $fopen(file, "w");
+    if (fd == 0) $fatal(1, "Can't write %s", file);
     $fwrite(fd, "P3\n320 200\n15\n");
     for (i = 0; i < 320 * 200; i = i + 1) begin
         case (i % 4)
@@ -285,6 +336,25 @@ task automatic save_ppm_b();
 endtask
 always @(posedge clk)
     if (ppm_b_file != "" && ppm_b_every > 0 && cycles > 0 && cycles % ppm_b_every == 0) save_ppm_b();
+
+// +snap_pc: a frame each time the instruction at snap_pc finishes
+always @(posedge clk) if (!reset && !done && wb_valid && wb_pc == snap_pc) begin
+    snap_hits = snap_hits + 1;
+    if (snap_hits > snap_skip) begin
+        write_ppm_b($sformatf("%s_%03d.ppm", snap_prefix, snap_saved));
+        $fwrite(32'h8000_0002, "snap %0d at cycle %0d (%0d instructions)\n", snap_saved, cycles, steps);
+        snap_saved = snap_saved + 1;
+        if (snap_saved >= snap_max) finish($sformatf("saved %0d snapshots at 0x%s", snap_saved, hex8(snap_pc)));
+    end
+end
+
+// +inputs: apply each change from its cycle on
+always @(posedge clk)
+    while (input_q.size() > 0 && input_q[0].cycle <= cycles) begin
+        sw <= input_q[0].sw;
+        key <= input_q[0].key;
+        void'(input_q.pop_front());
+    end
 
 task automatic save_ppm();
     logic [11:0] px;
