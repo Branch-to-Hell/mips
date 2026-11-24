@@ -3,18 +3,21 @@
 // instruction cache, arbiter) + sdram_sys (Platform Designer: Intel SDRAM controller) + the
 // controller's own memory model, wired like rtl/top_doom.v. Run from verif: do doom_mem.do
 // The CPU runs src/programs/test_ext.s from the on-chip text: words, bytes and halves to the
-// SDRAM, then a routine copied into the SDRAM and called from there (the instruction cache
+// SDRAM through the data cache (DCACHE > 0) or the plain bridge (DCACHE = 0; doom_mem.do runs both),
+// then a routine copied into the SDRAM and called from there (the instruction cache
 // fills its lines from the controller), twice, and again after its line was replaced.
 // The program reports on HEX (0xFFFF001C): 0x00600D = pass, 0xBAD0nn = test nn failed.
 // The model has no I/O delays: this checks the logic (handshakes, pipelined reads through the
 // 32 -> 16 width adapter, byte lanes), not the board timing (TimeQuest does that).
-module doom_mem_tb;
+module doom_mem_tb #(
+    parameter DCACHE = 10              // data cache size (DCACHE_LINES_LOG2); doom_mem.do also runs 0
+);
 
 reg clk = 0, reset = 1;
 always #20 clk = ~clk;                   // 25 MHz
 
 // ---- CPU side ----
-wire [31:0] bus_addr, bus_wdata, ext_rdata, ifetch_addr, ifetch_next, ifetch_data;
+wire [31:0] bus_addr, bus_wdata, ext_rdata, ifetch_addr, ifetch_next, ifetch_data, bus_addr_next;
 wire [3:0] bus_be;
 wire bus_we, bus_re, ext_sel, ext_stall, ifetch_req, ifetch_ready;
 
@@ -26,6 +29,7 @@ life_system #(.IMEM_INIT("../mem/test_ext"), .DEBOUNCE_CYCLES(50), .EXT_BUS(1)) 
     .bus_addr(bus_addr), .bus_wdata(bus_wdata), .bus_we(bus_we), .bus_re(bus_re), .bus_be(bus_be),
     .ext_sel(ext_sel), .ext_rdata(ext_rdata), .ext_stall(ext_stall),
     .ifetch_addr(ifetch_addr), .ifetch_req(ifetch_req), .ifetch_next(ifetch_next),
+    .bus_addr_next(bus_addr_next),
     .ifetch_data(ifetch_data), .ifetch_ready(ifetch_ready)
 );
 
@@ -35,11 +39,12 @@ wire [31:0] avm_writedata, avm_readdata;
 wire [3:0] avm_byteenable;
 wire avm_read, avm_write, avm_readdatavalid, avm_waitrequest;
 
-ext_memory xm (
+ext_memory #(.DCACHE_LINES_LOG2(DCACHE)) xm (
     .clk(clk), .reset(reset),
     .bus_addr(bus_addr), .bus_wdata(bus_wdata), .bus_be(bus_be), .bus_re(bus_re), .bus_we(bus_we),
     .ext_sel(ext_sel), .ext_rdata(ext_rdata), .ext_stall(ext_stall),
     .ifetch_addr(ifetch_addr), .ifetch_req(ifetch_req), .ifetch_next(ifetch_next),
+    .bus_addr_next(bus_addr_next),
     .ifetch_data(ifetch_data), .ifetch_ready(ifetch_ready),
     .avm_address(avm_address), .avm_read(avm_read), .avm_write(avm_write),
     .avm_writedata(avm_writedata), .avm_byteenable(avm_byteenable),
@@ -71,22 +76,21 @@ sdram_sys_sdram_test_component chip (
 );
 
 // ---- result: the program's write to HEX ----
-integer cycles = 0, misses = 0, fills_words = 0, loads = 0, stores = 0;
+integer cycles = 0, misses = 0, fills_words = 0, loads = 0, dmisses = 0, stores = 0;
 always @(posedge clk) if (!reset) begin
     cycles = cycles + 1;
     if (xm.cache.state == 2'd1 && xm.cache.req && !xm.cache.hit) misses = misses + 1;
     if (xm.i_readdatavalid) fills_words = fills_words + 1;
-    if (xm.bridge.state == 2'd3) begin
-        if (xm.bridge.was_read) loads = loads + 1;
-        else stores = stores + 1;
-    end
+    if (xm.ev_load) loads = loads + 1;
+    if (xm.ev_miss) dmisses = dmisses + 1;
+    if (xm.ev_store) stores = stores + 1;
     if (bus_we && bus_addr == 32'hFFFF_001C && !ext_stall) begin
         if (bus_wdata == 32'h0000_600D) begin
-            $display("PASS: doom_mem_tb: test_ext on ext_memory + the real SDRAM controller in %0d cycles (%0d cache misses, %0d words filled, %0d SDRAM loads, %0d stores)",
-                     cycles, misses, fills_words, loads, stores);
+            $display("PASS: doom_mem_tb (DCACHE %0d): test_ext on ext_memory + the real SDRAM controller in %0d cycles (%0d instruction cache misses, %0d words filled, %0d loads from the SDRAM region, %0d went to the SDRAM, %0d stores)",
+                     DCACHE, cycles, misses, fills_words, loads, dmisses, stores);
             $finish;
         end else begin
-            $display("FAIL: doom_mem_tb: HEX = %h (BAD0nn = test nn) after %0d cycles", bus_wdata, cycles);
+            $display("FAIL: doom_mem_tb (DCACHE %0d): HEX = %h (BAD0nn = test nn) after %0d cycles", DCACHE, bus_wdata, cycles);
             $finish;
         end
     end
@@ -103,8 +107,8 @@ initial begin
     repeat (4) @(negedge clk);
     reset = 0;
     #20_000_000;                         // 20 ms: something is stuck
-    $display("FAIL: doom_mem_tb: timeout (pc in ID %h, cache state %0d, bridge state %0d)",
-             sys.cpu.id_pc, xm.cache.state, xm.bridge.state);
+    $display("FAIL: doom_mem_tb (DCACHE %0d): timeout (pc in ID %h, instruction cache state %0d, data side stalled %b)",
+             DCACHE, sys.cpu.id_pc, xm.cache.state, ext_stall);
     $finish;
 end
 

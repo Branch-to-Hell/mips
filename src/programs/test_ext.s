@@ -1,4 +1,4 @@
-# test_ext.s - PLT-8 + PLT-12: the SDRAM through ext_memory (bridge + instruction cache).
+# test_ext.s - PLT-8 + PLT-12 + data cache: the SDRAM through ext_memory.
 # Runs from the on-chip text at 0x0 (like boot.S in top_doom) and uses the SDRAM region:
 #   1-16  words written and read back (also across a 16-byte cache line and a 2 KB row)
 #   17-24 byte/half stores and loads, big-endian (sb sh lb lbu lh lhu), as on the data region
@@ -7,6 +7,8 @@
 #         return the sum of the 16 words of test 1
 #   27    a second routine at an address with the same cache index (8 KB further), so it
 #         replaces the first line; then the first one again (a miss again, same sum)
+#   28-31 data cache conflicts: a store to B (same line index as a cached A) leaves A alone,
+#         loading B replaces A's line, a byte store to A then reads back right (write-through)
 # Self-checking, same protocol as TC-4 / cpu7_isa:
 #   PASS: LEDR (0xFFFF0018) = 0x3FF, then HEX (0xFFFF001C) = 0x00600D
 #   FAIL: HEX = 0xBAD0nn (nn = test number in $s0), then LEDR = 0
@@ -137,6 +139,40 @@ check:
     jalr  $a0                      # the line was replaced: a miss again
     nop
     bne   $v0, $s1, fail
+    nop
+
+# --- 28-31: data cache conflicts. A = 0x2000_0900, B = A + 32 KB (the same line index in a data
+#     cache of 8, 16 or 32 KB). Write-through, no write-allocate: a store to B while A is cached
+#     must not change A; loading B replaces A's line; A still reads its own value afterwards.
+    addiu $t2, $s7, 0x900          # A
+    lui   $t3, 0x0000
+    ori   $t3, $t3, 0x8000
+    addu  $t3, $t2, $t3            # B = A + 0x8000
+    lui   $t4, 0xA1A2
+    ori   $t4, $t4, 0xA3A4
+    sw    $t4, 0($t2)              # A = A1A2A3A4
+    lw    $t5, 0($t2)              # A in the cache
+    addiu $s0, $zero, 28
+    bne   $t5, $t4, fail
+    nop
+    lui   $t6, 0xB1B2
+    ori   $t6, $t6, 0xB3B4
+    sw    $t6, 0($t3)              # B = B1B2B3B4 (B not cached: SDRAM only)
+    lw    $t5, 0($t2)              # A must still be A1A2A3A4
+    addiu $s0, $zero, 29
+    bne   $t5, $t4, fail
+    nop
+    lw    $t5, 0($t3)              # B: a miss, replaces A's line
+    addiu $s0, $zero, 30
+    bne   $t5, $t6, fail
+    nop
+    addiu $t7, $zero, 0x5A
+    sb    $t7, 1($t2)              # A not cached now: byte store to the SDRAM only
+    lw    $t5, 0($t2)              # A: a miss again -> A15AA3A4
+    lui   $t4, 0xA15A
+    ori   $t4, $t4, 0xA3A4
+    addiu $s0, $zero, 31
+    bne   $t5, $t4, fail
     nop
     b     pass
     nop
