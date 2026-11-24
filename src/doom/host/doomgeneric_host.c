@@ -5,7 +5,11 @@
      fopen("doom1.wad") from memory; every other file fails, like our C library.
    - Time is a counter that only DG_SleepMs advances, so every run is the same.
    - DG_DrawFrame saves each frame as a PPM (palette applied) and stops after the last one.
-   Usage: doom_host <doom1.wad> <output dir> [frames]   (make -C src/doom host-run) */
+   - DOOM-8: an optional input script plays the board's switches and KEY0 through the same
+     input_map.c as the board. One line per change: "<frame> <SW mask> <KEY0>" (SW mask in hex,
+     bit n = SWn; KEY0 1 = pressed), '#' starts a comment; the inputs hold until the next line.
+   Usage: doom_host <doom1.wad> <output dir> [frames] [input script]
+          (make -C src/doom host-run / host-input) */
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,10 +19,20 @@
 #include "doomtype.h"
 #include "i_video.h"
 #include "wad_mem.h"
+#include "input_map.h"
+#include "doomdef.h"
 
 extern boolean palette_changed;
 extern struct color colors[256];
 extern char *pagename;                  /* d_main.c: the full-screen page (TITLEPIC...) */
+extern int key_nextweapon;              /* m_controls.c */
+extern boolean menuactive;              /* m_menu.c */
+extern gamestate_t gamestate;           /* g_game.c */
+extern boolean demoplayback;
+
+#define MAX_STEPS 256
+static struct { int frame; uint32_t inputs; } steps[MAX_STEPS];
+static int nsteps;
 
 static unsigned char *wad;
 static long wad_len;
@@ -54,7 +68,8 @@ void DG_DrawFrame(void)
         fputc(c.b, f);
     }
     fclose(f);
-    printf("frame %3d  t=%6u ms  page=%s\n", frame, now_ms, pagename ? pagename : "-");
+    printf("frame %3d  t=%6u ms  page=%-8s state=%d menu=%d demo=%d\n", frame, now_ms,
+           pagename ? pagename : "-", gamestate, menuactive, demoplayback);
     palette_changed = false;
     if (++frame >= frames_max) {
         printf("%d frames saved in %s\n", frame, out_dir);
@@ -64,7 +79,45 @@ void DG_DrawFrame(void)
 
 void DG_SleepMs(uint32_t ms) { now_ms += ms; }
 uint32_t DG_GetTicksMs(void) { return now_ms; }
-int DG_GetKey(int *pressed, unsigned char *key) { (void)pressed; (void)key; return 0; }
+static uint32_t inputs_now(void)
+{
+    uint32_t inputs = 0;
+    for (int i = 0; i < nsteps && steps[i].frame <= frame; i++)
+        inputs = steps[i].inputs;
+    return inputs;
+}
+
+int DG_GetKey(int *pressed, unsigned char *key)
+{
+    int got = input_get_key(inputs_now(), pressed, key);
+    if (got)
+        printf("frame %3d  key 0x%02x %s\n", frame, *key, *pressed ? "down" : "up");
+    return got;
+}
+
+static void load_steps(const char *path)
+{
+    FILE *f = fopen(path, "r");
+    if (!f) {
+        perror(path);
+        exit(1);
+    }
+    char line[256];
+    while (fgets(line, sizeof line, f)) {
+        char *hash = strchr(line, '#');
+        if (hash)
+            *hash = 0;
+        int fr, key0;
+        unsigned sw;
+        if (sscanf(line, "%d %x %d", &fr, &sw, &key0) == 3 && nsteps < MAX_STEPS) {
+            steps[nsteps].frame = fr;
+            steps[nsteps].inputs = (sw & 0x3FF) | (key0 ? INPUT_KEY0 : 0);
+            nsteps++;
+        }
+    }
+    fclose(f);
+    printf("%d input steps from %s\n", nsteps, path);
+}
 void DG_SetWindowTitle(const char *title) { (void)title; }
 
 int main(int argc, char **argv)
@@ -76,6 +129,8 @@ int main(int argc, char **argv)
     out_dir = argv[2];
     if (argc > 3)
         frames_max = atoi(argv[3]);
+    if (argc > 4)
+        load_steps(argv[4]);
 
     FILE *f = fopen(argv[1], "rb");
     if (!f || fseek(f, 0, SEEK_END) || (wad_len = ftell(f)) <= 0) {
@@ -100,6 +155,7 @@ int main(int argc, char **argv)
 
     static char *dargv[] = { "doom", "-iwad", "doom1.wad", NULL };
     doomgeneric_Create(3, dargv);
+    key_nextweapon = INPUT_NEXT_WEAPON_KEY;     /* as on the board (doomgeneric_mips.c) */
     for (;;)
         doomgeneric_Tick();
 }

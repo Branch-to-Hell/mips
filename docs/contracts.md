@@ -222,6 +222,28 @@ Doom's code doesn't fit on chip: built with our flags it is 367 KB of code and c
 - **Doom's software:** linker script `src/doom/link_sdram.ld` (everything from `0x2000_0000`), its own `crt0` (`$sp` = `0x1001_3FF0`, zero `.bss`, call `main`). `elf2hex.py` writes the image as one binary from `0x2000_0000` (for `wad_load.tcl`, offset 0) and as a `.hex` for the simulation.
 - **Simulation:** `mips_sim_sdram` (Verilator, `verif/verilator`) is `life_system` + `ext_memory` on a behavioural SDRAM with the same Avalon interface (`avalon_sdram.sv`: `waitrequest` and read latency at random, pipelined reads in order), preloaded with an SDRAM image (`+sdram=`) and the WAD (`+wad=`, at offset `0x0300_0000`). It starts at `0x2000_0000`, so it skips the KEY0 wait (DOOM-6 runs Doom on it). `make -C verif/verilator compare-sdram PROG=<src/c program>` links a C test like Doom and compares its trace with `ref_sim.py --sdram`. `verif/doom_mem.do` (ModelSim) runs `src/programs/test_ext.s` on `ext_memory` with the real Intel controller and its memory model.
 
+## Doom controls (DOOM-8)
+`top_doom` has 10 switches and KEY0 for Doom: KEY1 is the CPU reset (see "Doom memory"). `src/doom/input_map.c` turns them into Doom key events in `DG_GetKey` (SW at `0xFFFF_0010`, KEY0 = bit 0 of `0xFFFF_0014`, 1 = pressed), sampled once per Doom tic (1/35 s):
+
+| Input | Doom key (doomgeneric's default binding) | Kind |
+|---|---|---|
+| SW0 | forward (`KEY_UPARROW`; menus: up) | held |
+| SW1 | back (`KEY_DOWNARROW`; menus: down) | held |
+| SW2 | turn left (`KEY_LEFTARROW`) | held |
+| SW3 | turn right (`KEY_RIGHTARROW`) | held |
+| SW4 | run (`KEY_RSHIFT`, `key_speed`) | held |
+| SW5 | use / open doors (`KEY_USE`) | held |
+| SW6 | Enter (`KEY_ENTER`: opens the menu on the title/demo, selects in menus) | momentary |
+| SW7 | Escape (`KEY_ESCAPE`: menu on/off, back) | momentary |
+| SW8 | strafe (`KEY_RALT`, `key_strafe`): with SW2/SW3 the player moves sideways | held |
+| SW9 | next weapon (`]`, bound to `key_nextweapon` by `main`) | momentary |
+| KEY0 | fire (`KEY_FIRE`) | held |
+
+- **Held:** key down when the input goes to 1, key up when it goes back to 0 (no auto-repeat: a menu moves one step per switch-up).
+- **Momentary:** key down when the switch goes up, key up on the next tic, nothing when it goes down. Leaving the switch up does nothing more, so each menu step is "switch up, switch down".
+- Starting a game from the title screen: SW6 up/down 4 times (menu → New Game → episode → skill), as checked on the PC (`make -C src/doom host-input`).
+- LEDR shows the switches Doom reads (LEDR9..0 = SW9..0), so a running Doom and a stuck board look different. The DOOM-3 error (all LEDs on, HEX `bAd1Ad`) happens before Doom starts and stays.
+
 ## Reference simulator trace (TC-6)
 `src/tools/ref_sim.py` runs an assembler image (`<name>.hex` + `<name>_data.hex`) and prints one line per register write, in program order. The Verilator harness (TC-7) prints **the same format**, HI/LO lines included, so the two traces compare with a plain `diff` (TC-11).
 

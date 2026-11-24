@@ -3,6 +3,8 @@
    video mode B: DG_ScreenBuffer points at framebuffer B and I_FinishUpdate copies each line
    straight into it. The palette goes to the mode B palette when Doom changes it.
    The WAD is read from the SDRAM as a file in memory (DOOM-3, wad_mem.c).
+   Controls (DOOM-8): switches and KEY0 -> Doom keys in input_map.c; LEDR shows the inputs Doom
+   reads (SW9..0), so a dead board and a dead Doom look different.
    Memory map and MMIO: docs/contracts.md. */
 #include <stdint.h>
 #include <stdio.h>
@@ -12,7 +14,10 @@
 #include "doomtype.h"
 #include "i_video.h"
 #include "wad_mem.h"
+#include "input_map.h"
 
+#define SW         (*(volatile uint32_t *)0xFFFF0010)   /* bits 9..0 */
+#define KEY        (*(volatile uint32_t *)0xFFFF0014)   /* bit 0 = KEY0, 1 = pressed (debounced) */
 #define LEDR       (*(volatile uint32_t *)0xFFFF0018)
 #define HEX        (*(volatile uint32_t *)0xFFFF001C)
 #define TIMER      (*(volatile uint32_t *)0xFFFF0020)   /* milliseconds since reset */
@@ -25,6 +30,7 @@
 /* i_video.c with CMAP256: Doom's palette and "it changed" */
 extern boolean palette_changed;
 extern struct color colors[256];
+extern int key_nextweapon;              /* m_controls.c */
 
 void DG_Init(void)
 {
@@ -57,9 +63,9 @@ uint32_t DG_GetTicksMs(void)
 
 int DG_GetKey(int *pressed, unsigned char *key)
 {
-    (void)pressed;
-    (void)key;
-    return 0;                           /* no keys yet: controls are DOOM-8 */
+    uint32_t sw = SW & 0x3FF;
+    LEDR = sw;
+    return input_get_key(sw | ((KEY & 1) ? INPUT_KEY0 : 0), pressed, key);
 }
 
 void DG_SetWindowTitle(const char *title)
@@ -82,6 +88,7 @@ int main(void)
 
     static char *argv[] = { "doom", "-iwad", "doom1.wad", NULL };
     doomgeneric_Create(3, argv);
+    key_nextweapon = INPUT_NEXT_WEAPON_KEY;     /* unbound by default; SW9 sends this key */
     for (;;)
         doomgeneric_Tick();
 }

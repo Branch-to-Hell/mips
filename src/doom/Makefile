@@ -7,7 +7,9 @@
 #   build/doom/doom_sdram.hex          the same image, one word per line, for the simulation
 #   mem/doom_boot*.hex                 boot.S for the on-chip text (top_doom)
 # DOOM-1, the same Doom on the PC without a window (reference frames for DOOM-6/7):
-#     make -C src/doom host-run [WAD=build/wad/doom1.wad] [FRAMES=40]
+#     make -C src/doom host-run [WAD=build/wad/doom1.wad] [FRAMES=40] [INPUTS=<script>]
+#     make -C src/doom host-input       (DOOM-8: menu -> new game -> walk, from a switch script)
+#     make -C src/doom input-test       (DOOM-8: the switch -> key event logic)
 #   build/doom/host/doom_host           native build (gcc), src/doom/host/doomgeneric_host.c
 #   build/doom/host/frame_NNN.ppm       the first FRAMES frames, palette applied
 # Memory map and build flags: docs/contracts.md "Doom memory" and "Tool settings".
@@ -37,16 +39,16 @@ LDFLAGS := $(ARCH) -nostdlib -nostartfiles -static -Wl,--gc-sections \
            -Wl,--build-id=none -Wl,--no-warn-rwx-segments
 
 DOOM_SRCS := $(wildcard $(DG)/*.c)
-OBJS := $(patsubst $(DG)/%.c,$(BUILD)/dg/%.o,$(DOOM_SRCS)) $(BUILD)/doomgeneric_mips.o $(BUILD)/wad_mem.o
+OBJS := $(patsubst $(DG)/%.c,$(BUILD)/dg/%.o,$(DOOM_SRCS)) $(BUILD)/doomgeneric_mips.o $(BUILD)/wad_mem.o $(BUILD)/input_map.o
 
-.PHONY: all clean host host-run
+.PHONY: all clean host host-run host-input input-test
 all: $(BUILD)/doom.bin $(MEM)/doom_boot.hex
 
 $(BUILD)/dg/%.o: $(DG)/%.c
 	@mkdir -p $(BUILD)/dg
 	$(CC) $(CFLAGS) $(DOOM_WARN) -c $< -o $@
 
-$(BUILD)/doomgeneric_mips.o $(BUILD)/wad_mem.o: $(BUILD)/%.o: %.c
+$(BUILD)/doomgeneric_mips.o $(BUILD)/wad_mem.o $(BUILD)/input_map.o: $(BUILD)/%.o: %.c
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -Wall -Wextra -c $< -o $@
 
@@ -80,7 +82,7 @@ $(MEM)/doom_boot.hex: $(BUILD)/doom_boot.elf $(ROOT)/src/tools/elf2hex.py
 HOST_CC     ?= gcc
 HOST        := $(BUILD)/host
 HOST_CFLAGS := -O2 -g $(DOOM_DEFS) -I$(DG) -I. -MMD -MP
-HOST_OBJS   := $(patsubst $(DG)/%.c,$(HOST)/dg/%.o,$(DOOM_SRCS)) $(HOST)/doomgeneric_host.o $(HOST)/wad_mem.o
+HOST_OBJS   := $(patsubst $(DG)/%.c,$(HOST)/dg/%.o,$(DOOM_SRCS)) $(HOST)/doomgeneric_host.o $(HOST)/wad_mem.o $(HOST)/input_map.o
 WAD         ?= $(ROOT)/build/wad/doom1.wad
 FRAMES      ?= 40
 
@@ -94,7 +96,7 @@ $(HOST)/doomgeneric_host.o: host/doomgeneric_host.c
 	@mkdir -p $(HOST)
 	$(HOST_CC) $(HOST_CFLAGS) -Wall -Wextra -c $< -o $@
 
-$(HOST)/wad_mem.o: wad_mem.c
+$(HOST)/wad_mem.o $(HOST)/input_map.o: $(HOST)/%.o: %.c
 	@mkdir -p $(HOST)
 	$(HOST_CC) $(HOST_CFLAGS) -Wall -Wextra -c $< -o $@
 
@@ -103,7 +105,21 @@ $(HOST)/doom_host: $(HOST_OBJS)
 
 host-run: $(HOST)/doom_host
 	rm -f $(HOST)/frame_*.ppm
-	cd $(HOST) && ./doom_host $(abspath $(WAD)) . $(FRAMES)
+	cd $(HOST) && ./doom_host $(abspath $(WAD)) . $(FRAMES) $(if $(INPUTS),$(abspath $(INPUTS)))
+
+# DOOM-8: the switches and KEY0 from a script (host/inputs_new_game.txt: menu -> new game ->
+# walk and shoot), through the same input_map.c as the board
+host-input: $(HOST)/doom_host
+	rm -f $(HOST)/frame_*.ppm
+	cd $(HOST) && ./doom_host $(abspath $(WAD)) . $(or $(FRAMES_INPUT),260) $(abspath host/inputs_new_game.txt)
+
+# DOOM-8: input_map.c's event logic (edges, momentary keys), on the PC
+input-test: $(HOST)/test_input_map
+	$(HOST)/test_input_map
+
+$(HOST)/test_input_map: host/test_input_map.c input_map.c input_map.h
+	@mkdir -p $(HOST)
+	$(HOST_CC) -O2 -Wall -Wextra -I$(DG) -I. host/test_input_map.c input_map.c -o $@
 
 clean:
 	rm -rf $(BUILD)
