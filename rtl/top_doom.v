@@ -14,7 +14,9 @@ Resets: the PLL lock resets everything. KEY1 resets the CPU side only (life_syst
 ext_memory), never the SDRAM controller: resetting it stops the refresh and the SDRAM loses
 the image and the WAD. After KEY1 the CPU is back in boot.S, waiting for KEY0 again.
 */
-module top_doom (
+module top_doom #(
+    parameter DCACHE = 10              // data cache: ext_memory's DCACHE_LINES_LOG2 (10 = 16 KB, 0 = none)
+)(
     input MAX10_CLK1_50,
     input [9:0] SW,
     input [1:0] KEY,
@@ -52,7 +54,7 @@ always @(posedge clk)
 wire cpu_reset = !cpu_por[4];
 
 // ---- CPU, on-chip memory, MMIO and video ----
-wire [31:0] bus_addr, bus_wdata, ext_rdata, ifetch_addr, ifetch_next, ifetch_data;
+wire [31:0] bus_addr, bus_wdata, ext_rdata, ifetch_addr, ifetch_next, ifetch_data, bus_addr_next;
 wire [3:0] bus_be;
 wire bus_we, bus_re, ext_sel, ext_stall, ifetch_req, ifetch_ready;
 
@@ -64,6 +66,7 @@ life_system #(.IMEM_INIT("../mem/doom_boot"), .MODE_B(1), .EXT_BUS(1)) sys ( // 
     .bus_addr(bus_addr), .bus_wdata(bus_wdata), .bus_we(bus_we), .bus_re(bus_re), .bus_be(bus_be),
     .ext_sel(ext_sel), .ext_rdata(ext_rdata), .ext_stall(ext_stall),
     .ifetch_addr(ifetch_addr), .ifetch_req(ifetch_req), .ifetch_next(ifetch_next),
+    .bus_addr_next(bus_addr_next),
     .ifetch_data(ifetch_data), .ifetch_ready(ifetch_ready)
 );
 
@@ -73,11 +76,12 @@ wire [31:0] avm_writedata, avm_readdata;
 wire [3:0] avm_byteenable;
 wire avm_read, avm_write, avm_readdatavalid, avm_waitrequest;
 
-ext_memory xm (
+ext_memory #(.DCACHE_LINES_LOG2(DCACHE)) xm (
     .clk(clk), .reset(cpu_reset),
     .bus_addr(bus_addr), .bus_wdata(bus_wdata), .bus_be(bus_be), .bus_re(bus_re), .bus_we(bus_we),
     .ext_sel(ext_sel), .ext_rdata(ext_rdata), .ext_stall(ext_stall),
     .ifetch_addr(ifetch_addr), .ifetch_req(ifetch_req), .ifetch_next(ifetch_next),
+    .bus_addr_next(bus_addr_next),
     .ifetch_data(ifetch_data), .ifetch_ready(ifetch_ready),
     .avm_address(avm_address), .avm_read(avm_read), .avm_write(avm_write),
     .avm_writedata(avm_writedata), .avm_byteenable(avm_byteenable),

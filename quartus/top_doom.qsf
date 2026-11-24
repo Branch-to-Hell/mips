@@ -37,6 +37,7 @@ set_global_assignment -name VERILOG_FILE ../rtl/pll_sdram.v
 set_global_assignment -name VERILOG_FILE ../rtl/ext_memory.v
 set_global_assignment -name VERILOG_FILE ../rtl/sdram_bridge.v
 set_global_assignment -name VERILOG_FILE ../rtl/icache.v
+set_global_assignment -name VERILOG_FILE ../rtl/dcache.v
 # Platform Designer system (sdram_sys.tcl rebuilds the .qsys; Quartus generates its HDL)
 set_global_assignment -name QSYS_FILE sdram_sys.qsys
 set_global_assignment -name SDC_FILE top_doom.sdc
