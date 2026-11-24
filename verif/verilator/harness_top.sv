@@ -57,6 +57,7 @@
 // steps = instructions that finished (nops too, bubbles not), the same count as ref_sim.py.
 // Cycles go to stderr, so stdout is only the trace.
 module harness_top #(
+    parameter DCACHE = 0,     // EXT_START >= 2: ext_memory's DCACHE_LINES_LOG2 (0 = no data cache, 9 = 8 KB...)
     parameter EXT_START = 0   // 1 = mips_sim_ext: run from 0x2000_0000 through the external fetch port
                               // 2 = mips_sim_sdram: from 0x2000_0000 through ext_memory + avalon_sdram
                               // 3 = mips_sim_boot: the same, from 0x0 (boot code on chip, like top_doom)
@@ -72,7 +73,7 @@ localparam EXT_WORDS = 65536;             // 256 KB of external text for the tes
 localparam SDRAM = EXT_START >= 2;
 logic ext_stall;
 logic rand_stall = 0;
-logic [31:0] ifetch_addr, ifetch_data, ifetch_next;
+logic [31:0] ifetch_addr, ifetch_data, ifetch_next, bus_addr_next;
 logic ifetch_req, ifetch_ready;
 logic [31:0] bus_addr, bus_wdata, ext_rdata;
 logic [3:0] bus_be;
@@ -88,6 +89,7 @@ life_system #(.MODE_B(1), .DEBOUNCE_CYCLES(50), .EXT_BUS(1),
     .bus_addr(bus_addr), .bus_wdata(bus_wdata), .bus_we(bus_we), .bus_re(bus_re), .bus_be(bus_be),
     .ext_sel(ext_sel), .ext_rdata(SDRAM ? ext_rdata : 32'd0), .ext_stall(ext_stall),
     .ifetch_addr(ifetch_addr), .ifetch_req(ifetch_req), .ifetch_next(ifetch_next),
+    .bus_addr_next(bus_addr_next),
     .ifetch_data(SDRAM ? cache_data : port_data), .ifetch_ready(SDRAM ? cache_ready : port_ready)
 );
 
@@ -101,10 +103,11 @@ logic [3:0] avm_byteenable;
 int sdram_wait = 0, sdram_extra = 0;
 assign ext_stall = (SDRAM && bridge_stall) || rand_stall;
 
-ext_memory xm (
+ext_memory #(.DCACHE_LINES_LOG2(DCACHE)) xm (
     .clk(clk), .reset(reset),
     .bus_addr(bus_addr), .bus_wdata(bus_wdata), .bus_be(bus_be), .bus_re(bus_re), .bus_we(bus_we),
     .ext_sel(ext_sel && SDRAM), .ext_rdata(ext_rdata), .ext_stall(bridge_stall),
+    .bus_addr_next(bus_addr_next),
     .ifetch_addr(ifetch_addr), .ifetch_req(ifetch_req && SDRAM), .ifetch_next(ifetch_next),
     .ifetch_data(cache_data), .ifetch_ready(cache_ready),
     .avm_address(avm_address), .avm_read(avm_read), .avm_write(avm_write),
@@ -258,10 +261,12 @@ wire self_jump = sys.cpu.id_valid && sys.cpu.redirect && sys.cpu.if_id_enable &&
 longint cycles = 0, steps = 0;
 // EXT_START = 2: what the external side cost (stderr at the end)
 longint cache_misses = 0, sdram_loads = 0, sdram_stores = 0, fetch_wait_cycles = 0, data_wait_cycles = 0;
+longint data_misses = 0;
 always @(posedge clk) if (SDRAM && !reset && !done) begin
     if (xm.cache.state == 2'd1 && xm.cache.req && !xm.cache.hit) cache_misses <= cache_misses + 1;
-    if (xm.bridge.state == 2'd3 && xm.bridge.was_read) sdram_loads <= sdram_loads + 1;
-    if (xm.bridge.state == 2'd3 && !xm.bridge.was_read) sdram_stores <= sdram_stores + 1;
+    if (xm.ev_load) sdram_loads <= sdram_loads + 1;
+    if (xm.ev_miss) data_misses <= data_misses + 1;
+    if (xm.ev_store) sdram_stores <= sdram_stores + 1;
     if (ifetch_req && !cache_ready && !bridge_stall) fetch_wait_cycles <= fetch_wait_cycles + 1;
     if (bridge_stall) data_wait_cycles <= data_wait_cycles + 1;
 end
@@ -305,8 +310,8 @@ task automatic finish_now();
     $display("HALT: %s  (steps=%0d)", end_reason, steps);
     $fwrite(32'h8000_0002, "mips_sim: %0d cycles, %0d instructions\n", cycles, steps);  // stderr
     if (SDRAM)
-        $fwrite(32'h8000_0002, "ext_memory: %0d cache misses, %0d SDRAM loads, %0d stores; cycles waiting: %0d fetch, %0d data\n",
-                cache_misses, sdram_loads, sdram_stores, fetch_wait_cycles, data_wait_cycles);
+        $fwrite(32'h8000_0002, "ext_memory: %0d cache misses, %0d SDRAM loads (%0d went to the SDRAM), %0d stores; cycles waiting: %0d fetch, %0d data\n",
+                cache_misses, sdram_loads, data_misses, sdram_stores, fetch_wait_cycles, data_wait_cycles);
     if (ppm_file != "") save_ppm();
     if (ppm_b_file != "") save_ppm_b();
     done = 1;

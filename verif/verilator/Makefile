@@ -26,12 +26,16 @@ SIM_EXT := $(BUILD)/mips_sim_ext
 SIM_SDRAM := $(BUILD)/mips_sim_sdram
 SIM_BOOT := $(BUILD)/mips_sim_boot
 PYTHON  ?= python3
+# Data cache size in mips_sim_sdram and mips_sim_boot (ext_memory's DCACHE_LINES_LOG2):
+# 0 = none, 9 = 8 KB, 10 = 16 KB, 11 = 32 KB. Changing it rebuilds them (the stamp file).
+DCACHE  ?= 10
+DC_STAMP := $(BUILD)/dcache_$(DCACHE).stamp
 
 # life_system with mode B and what it instantiates (no PLL or board top-levels)
 RTL := $(addprefix $(ROOT)/rtl/, life_system.v mips_pipeline.v mult_div.v hazard_unit.v if_id_register.v \
        pipeline_register.v instruction_memory.v control_unit.v alu_control.v register_file.v alu.v \
        data_memory.v debounce.v hex7seg.v hex_debug.v mmio.v vga_sync.v framebuffer_a.v \
-       video_mode_a.v framebuffer_b.v palette.v video_mode_b.v ext_memory.v sdram_bridge.v icache.v)
+       video_mode_a.v framebuffer_b.v palette.v video_mode_b.v ext_memory.v sdram_bridge.v icache.v dcache.v)
 SOURCES := $(CURDIR)/harness_top.sv $(CURDIR)/avalon_sdram.sv $(CURDIR)/sim_main.cpp $(RTL)
 
 # The RTL is written for ModelSim and Quartus: Verilator's style warnings (widths, unused
@@ -62,13 +66,18 @@ $(SIM_EXT): harness_top.sv avalon_sdram.sv sim_main.cpp $(RTL)
 	mkdir -p $(BUILD)
 	verilator $(VFLAGS) -GEXT_START=1 -Mdir $(BUILD)/obj_dir_ext -o $(SIM_EXT) $(SOURCES)
 
-$(SIM_SDRAM): harness_top.sv avalon_sdram.sv sim_main.cpp $(RTL)
+$(DC_STAMP):
 	mkdir -p $(BUILD)
-	verilator $(VFLAGS) -GEXT_START=2 -Mdir $(BUILD)/obj_dir_sdram -o $(SIM_SDRAM) $(SOURCES)
+	rm -f $(BUILD)/dcache_*.stamp
+	touch $@
 
-$(SIM_BOOT): harness_top.sv avalon_sdram.sv sim_main.cpp $(RTL)
+$(SIM_SDRAM): harness_top.sv avalon_sdram.sv sim_main.cpp $(RTL) $(DC_STAMP)
 	mkdir -p $(BUILD)
-	verilator $(VFLAGS) -GEXT_START=3 -Mdir $(BUILD)/obj_dir_boot -o $(SIM_BOOT) $(SOURCES)
+	verilator $(VFLAGS) -GEXT_START=2 -GDCACHE=$(DCACHE) -Mdir $(BUILD)/obj_dir_sdram -o $(SIM_SDRAM) $(SOURCES)
+
+$(SIM_BOOT): harness_top.sv avalon_sdram.sv sim_main.cpp $(RTL) $(DC_STAMP)
+	mkdir -p $(BUILD)
+	verilator $(VFLAGS) -GEXT_START=3 -GDCACHE=$(DCACHE) -Mdir $(BUILD)/obj_dir_boot -o $(SIM_BOOT) $(SOURCES)
 
 run: $(SIM)
 	cd $(ROOT) && $(SIM) +program=mem/$(PROG) $(WAITS)

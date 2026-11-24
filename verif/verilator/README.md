@@ -99,7 +99,7 @@ make -C verif/verilator doom-boot         # like the board: boot.S on chip, KEY0
 - `doom-boot` uses `mips_sim_boot` (`EXT_START=3`): the same hardware, starting at `0x0` with `mem/doom_boot` (`boot.S`) like `top_doom`; `doom_boot_inputs.txt` presses KEY0 at cycle 20,000.
 - Harness options for this: `+snap_pc=<hex> +snap_skip=K +snap_max=N +snap_prefix=<path>`, `+inputs=<file>` (lines `<cycle> <SW hex> <KEY0> <KEY1>`), `+ppm_b=<file>` / `+ppm_b_every=N`, `+notrace` (no trace lines: ~1.6M simulated cycles per second). See the header of `harness_top.sv`.
 
-Checked on Nov 23:
+Checked on Nov 23, without the data cache (the numbers with it are below):
 
 | What | Result |
 |---|---|
@@ -109,6 +109,22 @@ Checked on Nov 23:
 | Demo (attract mode, E1M1), from 162M cycles | **~4.2 frames per second** at 25 MHz: 6.0M cycles per frame on average (5.0M to 8.2M), 65 frames measured. The game runs at the right speed (the timer is real), the picture is choppy |
 
 Where the 600M cycles of that run go (stderr): 30% instructions (177M), **52% waiting for SDRAM loads/stores** (35.5M loads, 13.3M stores), 3% waiting for the instruction cache (1.7M misses), ~15% hazard and multiply/divide bubbles. So a data cache in `ext_memory` is the biggest speed-up left; forwarding (CPU-10) is second (see issue #13).
+
+### The data cache (Nov 23)
+
+`mips_sim_sdram` and `mips_sim_boot` are built with ext_memory's data cache: `DCACHE=<n>` = `DCACHE_LINES_LOG2` (0 = none, the bridge; 9 = 8 KB; **10 = 16 KB, the default and `top_doom`'s**; 11 = 32 KB). Changing it rebuilds them (`build/verilator/dcache_<n>.stamp`), e.g. `make -C verif/verilator doom DCACHE=0`.
+
+The same 600M-cycle Doom run with each size (`doom-check` passes with all of them: frame 0 is still the PC's title screen):
+
+| Data cache | Title screen after KEY0 | Demo, frames per second at 25 MHz | Loads that go to the SDRAM | M9K in `top_doom` |
+|---|---|---|---|---|
+| none (bridge) | 42.1M cycles = 1.7 s | 4.17 | 100% | 129 |
+| 8 KB | 29.4M = 1.18 s | 7.68 | 7.9% | ~138 |
+| **16 KB** | **28.6M = 1.15 s** | **7.81** | **7.1%** | **147** |
+| 32 KB | 28.5M = 1.14 s | 7.94 | 6.2% | ~165 |
+
+With 16 KB the 600M cycles go: 51% instructions (306M), 16% waiting for data (98M, mostly the ~3 cycles of each write-through store: 23.6M stores), 6% waiting for the instruction cache, ~27% hazard and multiply/divide bubbles. Now forwarding (CPU-10, after the DEMO-1 freeze) and posting stores without waiting (a write buffer) are the next speed-ups.
+`doom-boot` with the 16 KB cache: `MATCH`, title at 28.7M cycles.
 The title screen and frame 150 of the demo: `docs/evidence/2026-11-23_doom6_title_verilator.png`, `docs/evidence/2026-11-23_doom6_demo_verilator.png`.
 
 ## What is checked (Nov 22)

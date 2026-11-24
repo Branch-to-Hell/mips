@@ -64,6 +64,10 @@ module mips_pipeline #(
     // PLT-12: the address fetch_pc (ifetch_addr) will hold after this edge, so the
     // instruction cache reads its RAM one cycle early and answers a hit in the same cycle
     output [31:0] ifetch_next,
+    // Data cache: the address mem_addr will hold after this edge (what EX/MEM loads, like
+    // pipeline_register: 0 for a bubble or in reset), so the cache reads its RAM one cycle early
+    // and a load that hits needs no wait
+    output [31:0] mem_addr_next,
     output reg halted,             // 1 = stopped by a halt; only reset clears it
     output reg [1:0] halt_cause,   // 1 = fetch, 2 = load, 3 = store (0 = running)
     output reg [31:0] halt_pc,     // PC of the instruction that failed
@@ -292,6 +296,8 @@ wire misaligned = (mem_size_ctl == SIZE_BYTE) ? 1'b0 :
 wire mem_access = mem_valid && (mem_read_ctl || mem_write_ctl);
 assign access_fault = mem_access && (mem_fault || misaligned);
 assign mem_addr = mem_value;
+assign mem_addr_next = reset ? 32'd0 : !ex_mem_enable ? mem_value :
+                       (ex_valid && !access_fault) ? ex_value : 32'd0;
 // CPU-7 byte lanes (big-endian): offset 0 is bits 31..24. 1111 when MEM has no load/store
 // (a bubble's payload is all zeros = byte size), so the top level's decoder, which also
 // looks at mem_be (framebuffer A takes whole words only), gives a clean answer.

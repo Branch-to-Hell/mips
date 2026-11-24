@@ -10,7 +10,9 @@ and never touches the Game of Life `.sof`. Memory map and resets: `docs/contract
 - [ ] The WAD: `build/wad/doom1.wad` (shareware v1.9, 4,196,020 bytes, SHA-1 `5b2e249b9c5133ec987b3ea77596381dc0d6bc1d`)
 - [ ] Simulation of the same start: `make -C verif/verilator doom-boot` → `build/verilator/doom/boot_000.png` is the title screen
 - [ ] Quartus, revision `top_doom` (from `quartus/`): `quartus_sh --flow compile mips -c top_doom` → `quartus/output_files/top_doom.sof`, no timing violations
-- [ ] Copy to the USB drive: `top_doom.sof`, `doom.bin`, `doom1.wad`, `src/tools/wad_load.tcl`, this checklist
+- [ ] Copy to the USB drive: `top_doom.sof`, `doom.bin`, `doom1.wad`, `src/tools/wad_load.tcl`, this checklist,
+      and the fallback `top_doom.sof` **without** the data cache (compiled with `DCACHE = 0` in `rtl/top_doom.v`,
+      or the one from before the data cache): if the new one misbehaves, try that one with the same `doom.bin`
 
 ## On the board
 1. [ ] Program `top_doom.sof` (Quartus Programmer, or `quartus_pgm -c USB-Blaster -m JTAG -o "p;quartus/output_files/top_doom.sof"`).
@@ -20,10 +22,12 @@ and never touches the Game of Life `.sof`. Memory map and resets: `docs/contract
 3. [ ] Load the WAD at the default offset `0x0300_0000` (`0x2300_0000`):
    `system-console -cli --script=src/tools/wad_load.tcl build/wad/doom1.wad` → `PASS ...` (note the KB/s it prints: ____ s)
 4. [ ] Press **KEY0**: `boot.S` jumps to `0x2000_0000`.
-5. [ ] The monitor switches to mode B (320×200 doubled) and shows the title screen about **1.7 s** after KEY0
-   (simulation: 42.1M cycles at 25 MHz, `make -C verif/verilator doom-boot`). Photo for the report.
+5. [ ] The monitor switches to mode B (320×200 doubled) and shows the title screen about **1.2 s** after KEY0
+   (simulation: 28.7M cycles at 25 MHz, `make -C verif/verilator doom-boot`; 1.7 s without the data cache).
+   Photo for the report.
 6. [ ] Wait: the demo of E1M1 starts by itself (attract mode, ~5 s after the title). Simulation says
-   ~4 frames per second: choppy but at the right game speed. Note what you see (and a short video).
+   ~7.8 frames per second with the 16 KB data cache (~4.2 without): choppy but at the right game speed.
+   Note what you see (and a short video).
 7. [ ] Controls (DOOM-8): see `src/doom/README.md` — Enter (menu), new game, walk, turn, fire, open a door.
    **All switches down before KEY0** (a switch already up sends its key at start: on the title screen any
    key opens the menu). SW8/SW9 are also the HEX debug views: while playing that only changes the HEX.
@@ -36,6 +40,7 @@ and never touches the Game of Life `.sof`. Memory map and resets: `docs/contract
 | Black screen, no halt, nothing after KEY0 | Stuck in `boot.S` or in Doom | SW9 up + SW4-0 = register number shows registers on HEX (`$ra` = 31, `$sp` = 29); compare with the simulation |
 | `wad_load` says no JTAG master | The board isn't running `top_doom` | Program the `.sof` again (step 1) |
 | Picture with wrong colors or garbage | Palette or SDRAM timing | Run `sdram_test` (revision `sdram_test`, PLT-9) to check the SDRAM; photo + note |
+| Works without the data cache but not with it | A data cache problem only the real board shows | Use the fallback `.sof` for the demo; note what differs (photo, HEX) |
 
 **KEY1** resets the CPU only (never the SDRAM controller): the CPU goes back to `boot.S`. Doom has already
 changed its own `.data`, so **load `doom.bin` again** (step 2) before KEY0. The WAD stays.

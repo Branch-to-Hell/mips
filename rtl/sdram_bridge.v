@@ -39,7 +39,11 @@ module sdram_bridge (
     input [31:0] avm_readdata,
     input avm_readdatavalid,
     input avm_waitrequest,
-    output busy
+    output busy,
+
+    // for the harness statistics: a load answered, a store done
+    output ev_load,
+    output ev_store
 );
 
 localparam IDLE = 2'd0, CMD = 2'd1, WAIT = 2'd2, DONE = 2'd3;
@@ -56,6 +60,8 @@ endfunction
 assign stall = access && state != DONE;
 assign rdata = (state == DONE && was_read) ? rdata_q : 32'd0;
 assign busy = state == CMD || state == WAIT;
+assign ev_load = state == DONE && was_read;
+assign ev_store = state == DONE && !was_read;
 
 always @(posedge clk) begin
     if (reset) begin

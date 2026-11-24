@@ -28,8 +28,12 @@ vlog ../rtl/life_system.v ../rtl/mips_pipeline.v ../rtl/mult_div.v ../rtl/hazard
      ../rtl/control_unit.v ../rtl/alu_control.v ../rtl/register_file.v ../rtl/alu.v \
      ../rtl/data_memory.v ../rtl/debounce.v ../rtl/hex7seg.v ../rtl/hex_debug.v ../rtl/mmio.v \
      ../rtl/vga_sync.v ../rtl/framebuffer_a.v ../rtl/video_mode_a.v \
-     ../rtl/ext_memory.v ../rtl/sdram_bridge.v ../rtl/icache.v doom_mem_tb.v
-vsim -voptargs=+acc -L altera_mf_ver work.doom_mem_tb
+     ../rtl/ext_memory.v ../rtl/sdram_bridge.v ../rtl/icache.v ../rtl/dcache.v doom_mem_tb.v
+# Without the data cache first (sdram_bridge), then with it (16 KB): the same program must pass
+vsim -onfinish stop -voptargs=+acc -L altera_mf_ver -gDCACHE=0 work.doom_mem_tb
+run -all
+quit -sim
+vsim -onfinish stop -voptargs=+acc -L altera_mf_ver -gDCACHE=10 work.doom_mem_tb
 
 add wave sim:/doom_mem_tb/clk
 add wave -radix hex sim:/doom_mem_tb/sys/cpu/id_pc
