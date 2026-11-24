@@ -1,0 +1,25 @@
+# DOOM-8 host test (make -C src/doom host-input): the board's switches and KEY0, as a script.
+# <frame> <SW mask, hex: bit n = SWn> <KEY0: 1 = pressed>; the inputs hold until the next line.
+# One frame is one Doom tic here (1/35 s). SW6 = Enter and SW7 = Escape send one press per
+# switch-up, so each menu step is SW6 up, then down.
+0    000 0
+20   040 0     # SW6 up: Enter on the title screen opens the main menu
+25   000 0
+35   040 0     # Enter: New Game -> episode menu
+40   000 0
+50   040 0     # Enter: Knee-Deep in the Dead -> skill menu
+55   000 0
+65   040 0     # Enter: Hurt Me Plenty -> the game starts (E1M1)
+70   000 0
+100  001 0     # SW0 up: walk forward
+140  011 0     # + SW4: run
+170  000 0
+175  008 0     # SW3: turn right
+195  000 0
+200  000 1     # KEY0: fire
+215  000 0
+220  200 0     # SW9 up: next weapon (fist -> pistol cycle)
+225  000 0
+230  101 0     # SW8 (strafe) + SW0 forward
+245  105 0     # + SW2: strafe left while walking
+255  000 0
