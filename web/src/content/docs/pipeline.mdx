@@ -1,0 +1,108 @@
+---
+title: Pipeline and hazards
+description: The five stages, the pipeline registers (width, enable, reset, valid, update), how the hazard unit stalls, and the branch delay slot.
+---
+
+:::tip[In 30 seconds]
+- Like a laundry line: while one instruction is in EX, the next is in ID and the one after in IF. Up to **5 instructions at once**, one finishing per cycle.
+- If an instruction needs a register that an older one hasn't written yet, the **hazard unit stalls** it in ID: 2 cycles if the producer is right before it, 1 if it's two before, 0 if it's three or more before.
+- Branches are decided in ID, so the instruction right after them (the **delay slot**) always runs. Our assembler puts a `nop` there, so programs behave like the spec's model.
+:::
+
+## The five stages
+
+| Stage | Does | Main parts |
+|---|---|---|
+| **IF** fetch | Read the instruction at PC; PC + 4 or the branch target | PC, instruction memory |
+| **ID** decode | Fields, control signals, read registers, extend the immediate, **resolve branches and jumps**, detect hazards | Control unit, register file, hazard unit |
+| **EX** execute | ALU operation, or the load/store address | ALU, multiply/divide |
+| **MEM** memory | Read or write data memory (only `lw`/`sw`) | Memory bus |
+| **WB** write back | Write the result into the destination register | Register file |
+
+With no stalls, a new instruction enters every cycle:
+
+| Cycle | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+|---|---|---|---|---|---|---|---|
+| Instruction 1 | IF | ID | EX | MEM | WB | | |
+| Instruction 2 | | IF | ID | EX | MEM | WB | |
+| Instruction 3 | | | IF | ID | EX | MEM | WB |
+
+In cycle 5 all five stages are busy, each with a different instruction.
+
+## Pipeline registers
+
+The spec asks to document the intermediate registers: **width, enable, reset, valid bit and when they update**.
+
+| Register | Width | Contents |
+|---|---|---|
+| **IF/ID** | 64 + valid = 65 | PC (32), instruction (32) |
+| **ID/EX** | 154 + valid = 155 | PC (32), A or link value PC + 8 (32), B / store data (32), immediate (32), destination (5), shamt (5), ALU control (4), ALUSrc, RegWrite, MemRead, MemWrite, MemtoReg, memory size (2), MemUnsigned, HI/LO operation (4) |
+| **EX/MEM** | 108 + valid = 109 | PC (32), ALU result or address (32), store data (32), destination (5), RegWrite, MemRead, MemWrite, MemtoReg, memory size (2), MemUnsigned |
+| **MEM/WB** | 38 + valid = 39 | Value to write (32, memory or ALU, already chosen in MEM), destination (5), RegWrite |
+
+Common rules (`rtl/pipeline_register.v`, `rtl/if_id_register.v`):
+
+- **Update:** on the rising edge of the one CPU clock (25 MHz). No gated clocks: stalls use **enables**.
+- **Priority:** synchronous reset > flush > enable > hold.
+- **Reset:** clears the contents and `valid`.
+- **Enable = 1:** load the input, or a **bubble** (all zeros, `valid = 0`) if the input isn't a real instruction.
+- **Enable = 0 (stall):** keep the contents and `valid`.
+- **Valid bit:** every side effect (register write, memory read or write) is gated with `valid`, so a bubble never changes anything.
+
+In IF/ID, the instruction field **is** the output register of the instruction memory (an M9K block): on a stall it reads the same address again, so the word doesn't change.
+
+## Data hazards and stalls
+
+An instruction reads its registers in **ID**, but the result of an older one is written in **WB**. Real example from the Game of Life (counting neighbours):
+
+```asm
+add  $t5, $t5, $s1     # address of the neighbour → $t5
+lw   $t6, 0($t5)       # needs $t5
+add  $t2, $t2, $t6     # needs $t6
+```
+
+The **hazard unit** (`rtl/hazard_unit.v`) compares the source registers of the instruction in ID with the destinations of the instructions in EX and MEM. If one matches (and it isn't `$zero`), it **stalls**: PC and IF/ID hold (the instruction stays in ID) and a bubble goes into ID/EX. The register file is bypassed from WB, so the value can be read in the same cycle it's written.
+
+| Cycle | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| `add $t5, …` | IF | ID | EX | MEM | **WB** | | | |
+| `lw $t6, 0($t5)` | | IF | ID ⏸ | ID ⏸ | **ID** | EX | MEM | WB |
+
+| The producer is… | Stall cycles |
+|---|---|
+| right before | 2 |
+| two before | 1 |
+| three or more before | 0 |
+
+A load is no special case (load-use costs the same 2 cycles). The programmer never adds `nop`s for data: the hardware waits by itself, which is why MARS programs run unchanged. There is no forwarding unit: simpler hardware, at the cost of these cycles. Tested by `tc5.do` (data, load-use, branch and jump hazards).
+
+## The branch delay slot
+
+When a branch is in ID deciding whether to jump, IF has **already fetched the next instruction** (PC + 4). There are two options:
+
+1. **Throw it away** (flush). This is the spec's model: the target is the next instruction that runs.
+2. **Always run it** (delay slot). This is what real MIPS does, and what **GCC expects**: it puts useful work there.
+
+| Cycle | 1 | 2 | 3 | 4 |
+|---|---|---|---|---|
+| `j j_target` at `0x24` | IF | ID: jump → `0x30` | EX | MEM |
+| delay slot at `0x28` | | IF | ID | EX |
+| `j_target` at `0x30` | | | IF | ID |
+
+(From [`trace_J.txt`](https://github.com/Branch-to-Hell/mips/blob/main/verif/traces/trace_J.txt).)
+
+**Our CPU always runs the delay slot**, because without it there is no Doom. To keep the spec's behavior for assembly programs, **our assembler inserts a `nop` after every branch and jump**. The instruction that always runs is then a `nop`, which does nothing.
+
+Example: `beq` at `100` is taken to `140`, and `$t1 = 0` before.
+
+| Case | Code at `104` | PCs that run | `$t1` at the target |
+|---|---|---|---|
+| The spec's model (no delay slot) | `addi $t1, $t1, 5` | 100 → 140 | 0 |
+| Our CPU, code from GCC (no `nop`) | `addi $t1, $t1, 5` | 100 → **104** → 140 | 5 |
+| Our CPU, code from **our assembler** | `nop` (inserted); the `addi` moves to 108 | 100 → 104 (`nop`) → 140 | **0**, same as the spec |
+
+For the same reason, `jal` writes **PC + 8** into `$ra`: returning to PC + 4 would run the delay slot twice. Tested by `cpu6.do` and `tc5_jump_hazards`.
+
+## Waiting for memory (Doom)
+
+On chip, memory always answers in one cycle. The SDRAM that Doom uses doesn't, so the CPU has one more input, `mem_stall`: while it is 1, **every stage up to MEM holds** and WB gets a bubble. Fetches from the SDRAM wait the same way. This was one of the few CPU changes Doom needed ([Doom](/doom/)).

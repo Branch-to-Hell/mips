@@ -1,0 +1,135 @@
+---
+title: Tests and traces
+description: Every case the spec asks to test, the test that covers it, the results, the R, I and J traces through the five stages, and how to reproduce each one.
+---
+
+import { Image } from 'astro:assets';
+import testsPass from '../../assets/lab/tests-pass.png';
+
+:::tip[In 30 seconds]
+- Every test runs on **`mips_pipeline` inside `life_system`**, the same hardware that goes to the board, and **checks itself**: it prints `PASS` or `FAIL`.
+- There is at least **one case per instruction**, every **integration** case of the spec's list, an **assembler error** and an **invalid access**.
+- One **trace per format** (R, I, J) follows an instruction through the 5 stages, cycle by cycle.
+:::
+
+## Results
+
+Run from `verif/` in ModelSim (`vsim -c -do "do <script>.do; quit -f"`). All **PASS**, last run on Nov 27 with the code in `main`.
+
+| Test | What it runs | Result |
+|---|---|---|
+| `tc4.do` | 6 self-checking programs, one per instruction group (`tc4_*.asm`) | 6/6 PASS |
+| `tc5.do` | 4 hazard programs: data, load-use, branch and jump hazards | 4/4 PASS |
+| `tc15.do` | The [graded algorithm](/algorithm/) with its 3 inputs | 3/3 PASS |
+| `trace.do` | The R, I and J traces below | PASS |
+| `instruction_memory.do` | One byte per address and big-endian fetch, on every fetch of the Game of Life | PASS, 647 fetches |
+| `cpu11.do` | The professor's encodings `0x21 0x23 0x09` and the standard ones | PASS, 20 checks |
+| `cpu14.do`, `halt.do` | Invalid and misaligned accesses: the halt, and what the board shows | PASS (10 cases, 47 checks) |
+| `cpu6.do` | The delay slot: the instruction after a branch or jump always runs | PASS |
+| `check_asm_errors.py` | The assembler's 8 error examples | 8/8 PASS |
+
+<figure class="media">
+	<Image src={testsPass} alt="PowerShell window: every ModelSim testbench and the assembler error check print PASS" />
+	<figcaption>The whole run on Nov 27: the 9 ModelSim testbenches and the 8 assembler errors, all PASS. The commands are at the end of this page.</figcaption>
+</figure>
+
+Two more checks that compare our CPU with an independent reference:
+
+- **MARS drill** (`src/tools/drill.py`): runs a MARS program in MARS and on our CPU in ModelSim and compares every register and the data. It's how we answer "run this unseen program" in under 15 minutes (`docs/tc12_drill.md`).
+- **Trace comparison** (Verilator, WSL): `make -C verif/verilator compare PROG=<name>` runs a program on our CPU and on our Python reference simulator and compares every register write. This is how C programs, and later Doom, were checked.
+
+## One case per instruction
+
+| Instruction | Format | Test (program: case numbers) |
+|---|---|---|
+| `add` | R | `tc4_rtype`: 1, 2 · trace R · `cpu11` |
+| `sub` | R | `tc4_rtype`: 3, 4 · `cpu11` |
+| `and` | R | `tc4_rtype`: 5 |
+| `or` | R | `tc4_rtype`: 6 |
+| `slt` | R | `tc4_rtype`: 9 to 12 (signed) |
+| `addi` | I | `tc4_itype`: 1, 2 · `cpu11` |
+| `ori` | I | `tc4_itype`: 5, 6, 12 |
+| `lw` | I | `tc4_memory`: 1 to 10 · trace I |
+| `sw` | I | `tc4_memory`: 1 to 9 |
+| `beq` | I | `tc4_branches`: 1, 2, 5, 6, 8 |
+| `j` | J | `tc4_jumps`: 1, 4 · trace J |
+| Extensions: `nor sll srl jr andi slti lui bne jal` | R, I, J | `tc4_rtype`, `tc4_shifts`, `tc4_itype`, `tc4_branches`, `tc4_jumps` |
+
+Each `tc4_*` program stores its results in data memory and the testbench compares them with the expected values written in the program.
+
+## Integration
+
+| Case the spec asks for | Test |
+|---|---|
+| The 4 fetch bytes | `instruction_memory.do`: for every instruction, `mem[PC]`…`mem[PC+3]` from the byte image, the 4 banks and the joined word. Every trace shows them in its IF line |
+| Writes to `$zero` | `tc4_rtype` 13 (`addi $zero`), `tc4_memory` 10 (`lw $zero`), `tc5_data_hazards` 9, `tc5_load_use` 8 |
+| Sign and zero extension | Sign: `tc4_itype` 1, 2, 9, 10 (`addi`, `slti` with negatives), `tc4_memory` 5 (negative offset). Zero: `tc4_itype` 4, 6 (`andi`, `ori` with `0xFFFF`) |
+| `lw` / `sw` | `tc4_memory` 1 to 10, `tc5_load_use` 1 to 11, trace I |
+| Branch taken and not taken | `tc4_branches` 1 and 3 (taken), 2, 4 and 9 (not taken) |
+| A backward branch | `tc4_branches` 7: a loop that adds 1+2+3+4+5 = 15 |
+| A `j` that skips an instruction with a visible effect | `tc4_jumps` 1 (`$t0` stays 0), trace J (`$t4` stays 0: `addi $t4, $zero, 1` never runs) |
+
+## Errors
+
+| Case | Test |
+|---|---|
+| Assembler errors | `check_asm_errors.py`: unknown mnemonic, invalid register, duplicate label, undefined label, out of range, wrong number of operands, `j` outside its region, misaligned target. Each checks the message and exit code 1 ([Assembler](/assembler/#diagnostics)) |
+| Invalid data access | `cpu14.do`, 10 cases: fetch outside the text, misaligned fetch, `lw`/`sw` to no region and misaligned, misaligned `lh`/`sh`, `lb` at an odd address (legal), older instructions finish, nothing is written. `halt.do`: `sw` to `0x7FFF_F000` halts with LEDR = `0x203`, HEX = `E3F000` ([Memory and I/O](/memory-io/#halt-on-an-invalid-access)) |
+
+## Traces (R, I, J)
+
+`trace.do` runs `src/programs/tc16_trace.asm` and writes one block per clock cycle for one instruction of each format: the state before, **IF** (PC, the 4 bytes, the word), **ID** (IF/ID, fields, extended immediate, every control signal, the operands, stall and redirect), **EX** (ID/EX, ALU inputs and result), **MEM** (EX/MEM, memory bus), **WB** (MEM/WB, register write), and the state after. The testbench also checks each result and that the instruction took 5 consecutive cycles.
+
+| Trace | Instruction | PC | Result |
+|---|---|---|---|
+| [`trace_R.txt`](https://github.com/Branch-to-Hell/mips/blob/main/verif/traces/trace_R.txt) | `add $t2, $t0, $t1` | `0x1C` | `$t2` = 5 + 7 = `0x0000000C` |
+| [`trace_I.txt`](https://github.com/Branch-to-Hell/mips/blob/main/verif/traces/trace_I.txt) | `lw $t3, 4($s1)` | `0x20` | `$t3` = mem[`0x1001_0004`] = `0xCAFE1234` |
+| [`trace_J.txt`](https://github.com/Branch-to-Hell/mips/blob/main/verif/traces/trace_J.txt) | `j j_target` | `0x24` | IF fetches the delay slot (`0x28`), then `0x30`; `$t4` stays 0 |
+
+<details>
+<summary>The I-type trace in full (<code>trace_I.txt</code>)</summary>
+
+```
+TC-16 trace, I lw: PC 00000020, word 8e2b0004
+Before: $s1 = 10010000  $t3 = ffffffff  mem[0x10010004] = cafe1234
+
+Cycle 1  IF   PC = 00000020 -> bytes mem[PC..PC+3] = 8e 2b 00 04 -> word 8e2b0004
+Cycle 2  ID   IF/ID: valid = 1, PC = 00000020, instruction = 8e2b0004
+               fields I: opcode = 100011, rs = 17 ($s1), rt = 11 ($t3), immediate = 0004 -> extended 00000004
+               control: RegDst = 0, ALUSrc = 1, MemtoReg = 1, RegWrite = 1, MemRead = 1, MemWrite = 0,
+                        Branch = 0, BranchNE = 0, Jump = 0, JumpReg = 0, Link = 0, ALUOp = 00, ALU control = 0010
+               register file: A = R[rs] = 10010000, B = R[rt] = ffffffff, destination = 11 ($t3)
+               hazard unit: stall = 0; redirect = 0
+               fetch: IF fetches 00000024 this cycle, then 00000028
+Cycle 3  EX   ID/EX: valid = 1, PC = 00000020, A = 10010000, B = ffffffff, immediate = 00000004, destination = 11 ($t3),
+                      ALU control = 0010, ALUSrc = 1, RegWrite = 1, MemRead = 1, MemWrite = 0, MemtoReg = 1
+               ALU: 10010000 op 00000004 = 10010004; value to EX/MEM = 10010004
+Cycle 4  MEM  EX/MEM: valid = 1, PC = 00000020, value = 10010004, store data = ffffffff, destination = 11 ($t3),
+                       RegWrite = 1, MemRead = 1, MemWrite = 0, MemtoReg = 1
+               memory bus: address = 10010004, read = 1, write = 0, read data = cafe1234 -> value to MEM/WB = cafe1234
+Cycle 5  WB   MEM/WB: valid = 1, value = cafe1234, destination = 11 ($t3), RegWrite = 1
+               register file: $t3 <= cafe1234 at the end of the cycle (bypassed to ID during it)
+
+After : $s1 = 10010000  $t3 = cafe1234  mem[0x10010004] = cafe1234
+```
+
+</details>
+
+The traces are generated files: run `do trace.do` again after any CPU change.
+
+## How to reproduce everything
+
+From the repository root (PowerShell), assemble the test programs once:
+
+```powershell
+foreach ($p in "tc4_rtype","tc4_itype","tc4_shifts","tc4_memory","tc4_branches","tc4_jumps","tc5_data_hazards","tc5_load_use","tc5_branch_hazards","tc5_jump_hazards","tc16_trace","test_halt","count_value_in1","count_value_in2","count_value_in3") { python src/assembler/assembler.py src/programs/$p.asm }
+```
+
+Then run the testbenches from `verif/`:
+
+```powershell
+cd verif
+foreach ($t in "tc4","tc5","tc15","trace","instruction_memory","cpu11","cpu14","halt","cpu6") { vsim -c -do "do $t.do; quit -f" | Select-String "PASS|FAIL" }
+cd ..
+python src/tools/check_asm_errors.py
+```

@@ -1,0 +1,53 @@
+---
+/* The fields of an R, I or J instruction, as boxes whose widths follow their bit counts.
+   Optional `values` fills a third row (one string per field). */
+interface Props {
+	format: 'R' | 'I' | 'J';
+	values?: string[];
+	caption?: string;
+}
+
+const layouts = {
+	R: [
+		['opcode', 6],
+		['rs', 5],
+		['rt', 5],
+		['rd', 5],
+		['shamt', 5],
+		['funct', 6],
+	],
+	I: [
+		['opcode', 6],
+		['rs', 5],
+		['rt', 5],
+		['immediate', 16],
+	],
+	J: [
+		['opcode', 6],
+		['index', 26],
+	],
+} as const;
+
+const { format, values, caption } = Astro.props;
+let high = 31;
+const fields = layouts[format].map(([name, width], i) => {
+	const bits = `${high}–${high - width + 1}`;
+	high -= width;
+	return { name, width, bits, value: values?.[i] };
+});
+---
+
+<div class="fields not-content" aria-label={`${format}-type fields`}>
+	{
+		fields.map((f) => (
+			<div class="field" style={`flex: ${f.width} 1 0`}>
+				<div class="name">{f.name}</div>
+				<div class="bits">
+					{f.bits} ({f.width})
+				</div>
+				{f.value !== undefined && <div class="value">{f.value}</div>}
+			</div>
+		))
+	}
+</div>
+{caption && <p class="fields-caption">{caption}</p>}

@@ -1,0 +1,281 @@
+/* Diagrams (src/components/*Diagram.astro, Datapath.astro).
+   Colors come from Starlight's theme variables, so they work in light and dark mode. */
+.diagram {
+	margin: 1.5rem 0;
+	overflow-x: auto;
+}
+.diagram svg {
+	display: block;
+	width: 100%;
+	height: auto;
+	color: var(--sl-color-text);
+	font-family: var(--sl-font, system-ui, sans-serif);
+}
+.diagram .box {
+	fill: var(--sl-color-gray-6);
+	stroke: var(--sl-color-gray-3);
+	stroke-width: 1.5;
+}
+.diagram .inner {
+	fill: var(--sl-color-bg);
+	stroke: var(--sl-color-gray-4);
+	stroke-width: 1;
+}
+.diagram .preg {
+	fill: var(--sl-color-accent-low);
+	stroke: var(--sl-color-accent);
+	stroke-width: 1.5;
+}
+.diagram .wire {
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.6;
+}
+.diagram .ctl {
+	fill: none;
+	stroke: var(--sl-color-accent);
+	stroke-width: 1.5;
+	stroke-dasharray: 6 4;
+}
+.diagram .doom {
+	fill: none;
+	stroke: var(--sl-color-orange);
+	stroke-width: 1.6;
+	stroke-dasharray: 6 4;
+}
+.diagram .doom-box {
+	fill: var(--sl-color-orange-low);
+	stroke: var(--sl-color-orange);
+	stroke-width: 1.5;
+	stroke-dasharray: 6 4;
+}
+.diagram .t {
+	fill: currentColor;
+	font-size: 13px;
+}
+.diagram .tb {
+	fill: currentColor;
+	font-size: 14px;
+	font-weight: 700;
+}
+.diagram .ts {
+	fill: var(--sl-color-gray-2);
+	font-size: 11px;
+}
+.diagram .th {
+	fill: var(--sl-color-text-accent);
+	font-size: 14px;
+	font-weight: 700;
+}
+.diagram .arrow {
+	fill: currentColor;
+}
+.diagram .arrow-ctl {
+	fill: var(--sl-color-accent);
+}
+.diagram .arrow-doom {
+	fill: var(--sl-color-orange);
+}
+.diagram .dot {
+	fill: currentColor;
+}
+.diagram-legend {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem 1.5rem;
+	font-size: var(--sl-text-sm);
+	color: var(--sl-color-gray-2);
+}
+.diagram-legend span::before {
+	content: '';
+	display: inline-block;
+	width: 1.6rem;
+	height: 0;
+	margin-right: 0.4rem;
+	vertical-align: middle;
+	border-top: 2px solid currentColor;
+}
+.diagram-legend .lg-ctl::before {
+	border-top: 2px dashed var(--sl-color-accent);
+}
+.diagram-legend .lg-preg::before {
+	height: 0.8rem;
+	width: 0.6rem;
+	border: 1.5px solid var(--sl-color-accent);
+	background: var(--sl-color-accent-low);
+}
+.diagram-legend .lg-doom::before {
+	border-top: 2px dashed var(--sl-color-orange);
+}
+
+/* Instruction fields (src/components/Fields.astro) */
+.fields {
+	display: flex;
+	margin: 1rem 0 0.25rem;
+	font-family: var(--sl-font-mono);
+	font-size: var(--sl-text-sm);
+	text-align: center;
+}
+.fields .field {
+	border: 1.5px solid var(--sl-color-gray-3);
+	margin-left: -1.5px;
+	min-width: 0;
+}
+.fields .name {
+	padding: 0.35rem 0.2rem;
+	background: var(--sl-color-gray-6);
+	font-weight: 700;
+}
+.fields .bits {
+	padding: 0.15rem;
+	color: var(--sl-color-gray-3);
+	font-size: var(--sl-text-xs);
+	border-top: 1px solid var(--sl-color-gray-5);
+}
+.fields .value {
+	padding: 0.3rem 0.2rem;
+	color: var(--sl-color-text-accent);
+	border-top: 1px solid var(--sl-color-gray-5);
+	overflow-wrap: anywhere;
+}
+.fields-caption {
+	margin-top: 0.25rem !important;
+	font-size: var(--sl-text-sm);
+	color: var(--sl-color-gray-3);
+}
+
+/* Missing content: photos, videos and text the team still has to add (src/components/Placeholder.astro) */
+.placeholder {
+	margin: 1.5rem 0;
+	padding: 1rem 1.25rem;
+	border: 2px dashed var(--sl-color-orange);
+	border-radius: 0.5rem;
+	background: var(--sl-color-orange-low);
+	color: var(--sl-color-white);
+}
+:root[data-theme='light'] .placeholder {
+	color: var(--sl-color-black);
+}
+.placeholder .ph-label {
+	display: inline-block;
+	margin-bottom: 0.4rem;
+	padding: 0.1rem 0.5rem;
+	border-radius: 0.25rem;
+	background: var(--sl-color-orange);
+	color: var(--sl-color-black);
+	font-size: var(--sl-text-xs);
+	font-weight: 700;
+	letter-spacing: 0.05em;
+}
+.placeholder .ph-title {
+	font-weight: 700;
+}
+.placeholder p {
+	margin: 0.25rem 0 0;
+}
+
+/* Full-screen diagrams, for presenting (src/components/FullscreenButton.astro) */
+.diagram:fullscreen {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	padding: 2rem;
+	background: var(--sl-color-bg);
+	overflow: auto;
+}
+.diagram:fullscreen svg {
+	min-width: 0;
+	max-height: calc(100vh - 6rem);
+}
+.fs-btn {
+	margin-left: auto;
+	padding: 0.15rem 0.6rem;
+	border: 1px solid var(--sl-color-gray-4);
+	border-radius: 0.25rem;
+	background: var(--sl-color-gray-6);
+	color: var(--sl-color-text);
+	font-size: var(--sl-text-sm);
+	cursor: pointer;
+}
+.fs-btn:hover {
+	border-color: var(--sl-color-accent);
+}
+.diagram-legend .fs-btn::before {
+	content: none;
+}
+
+/* Lab photos and videos */
+.media {
+	margin: 1.5rem 0;
+}
+.media video,
+.media img {
+	display: block;
+	width: 100%;
+	height: auto;
+	border-radius: 0.5rem;
+	border: 1px solid var(--sl-color-gray-5);
+}
+.media figcaption,
+.photo-grid figcaption {
+	margin-top: 0.4rem;
+	font-size: var(--sl-text-sm);
+	color: var(--sl-color-gray-3);
+}
+.photo-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+	gap: 1rem;
+	margin: 1.5rem 0;
+}
+.photo-grid figure {
+	margin: 0;
+}
+.photo-grid img {
+	display: block;
+	width: 100%;
+	height: auto;
+	border-radius: 0.5rem;
+	border: 1px solid var(--sl-color-gray-5);
+}
+
+/* "On this page" as narrow as the left menu (Starlight lets it grow with the screen).
+   The space it frees goes to the content, centered between both sidebars. */
+@media (min-width: 72rem) {
+	.right-sidebar-container {
+		width: var(--sl-sidebar-width);
+	}
+	[data-has-sidebar][data-has-toc] .main-pane {
+		--sl-content-margin-inline: auto;
+		width: calc(100% - var(--sl-sidebar-width));
+	}
+	.right-sidebar-panel .sl-container {
+		width: calc(var(--sl-sidebar-width) - 2 * var(--sl-sidebar-pad-x));
+		max-width: none;
+	}
+}
+
+/* Responsive content column: Starlight fixes it at 45rem. Here it grows with the screen up to
+   80rem (1280 px, the datapath's natural width), so diagrams fit without scrolling on a big
+   monitor; on small screens it is the full width, and the diagrams scale down with it. */
+:root {
+	--sl-content-width: min(80rem, 100%);
+}
+
+/* Instruction fields on phones: smaller text so the six R-type boxes fit */
+@media (max-width: 40rem) {
+	.fields {
+		font-size: 0.7rem;
+	}
+	.fields .bits {
+		font-size: 0.6rem;
+	}
+}
+
+/* Home page, "One processor, three levels": three cards in one row (CardGrid is 2 columns,
+   which leaves the third card alone). One column on phones, as before. */
+@media (min-width: 50rem) {
+	.levels .card-grid {
+		grid-template-columns: repeat(3, 1fr);
+	}
+}

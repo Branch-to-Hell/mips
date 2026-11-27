@@ -1,0 +1,91 @@
+---
+title: Project management and AI use
+description: Schedule and checkpoints, how we worked, the log of problems and agreements, and the declaration of AI use per module.
+---
+
+import Placeholder from '../../components/Placeholder.astro';
+
+## Schedule
+
+Four people, three one-week sprints, presentation on **Monday, Nov 30**. The rule: **level 1 (the spec and the Game of Life) always goes first**; Doom never blocks it.
+
+| Sprint | Dates | Goal |
+|---|---|---|
+| S1 | Nov 11 – 17 | Single-cycle CPU in simulation · framebuffer and MMIO on the board · assembler v1 · Game of Life in MARS · Doom on a PC |
+| S2 | Nov 18 – 24 | Game of Life on the board (single-cycle, then pipeline) · pipeline + hazard unit · full MIPS I · C on our CPU · SDRAM on the board |
+| S3 | Nov 25 – 29 | Doom in simulation and on the board · website · validations on the board · rehearsal |
+| Demo | Nov 30 | Presentation |
+
+### Milestones
+
+Dates are when the work was merged into `main` (from the pull requests).
+
+| Date | Milestone |
+|---|---|
+| Nov 13 | R-type single-cycle CPU (#62) |
+| Nov 17 | Video mode A on the board (#64), I-type (#63) |
+| Nov 18 | Assembler v1 (#68), Game of Life (#69), MMIO (#72), `top_life` (#73), edit mode (#75), timer (#80), website skeleton (#76, #77) |
+| Nov 19 | One byte per address instruction memory (#91), HEX register view (#78), video mode B (#93), SDRAM controller and test (#92, #94), WAD loading (#97) |
+| Nov 20 | Pipeline registers (#101), professor's encodings and PC = 0 (#104), branches in ID with a delay slot (#106) |
+| Nov 21 | Hazard unit (#107), visible halt (#108), assembler v3 (#102), hazard tests (#98), **Game of Life on the pipeline** (#112), graded algorithm (#103), test coverage and traces (#113) |
+| Nov 22 | Reference simulator (#110), drill (#114), folder layout (#115), GCC setup and C library (#116, #118), Verilator harness (#117), full MIPS I (#109), memory stall (#123), Doom build (#124), SDRAM bridge (#125) |
+| Nov 23 | **Doom's title screen in Verilator** (#127), Doom controls (#128), data cache (#129) |
+| Nov 26 | **Everything on the board**: graded algorithm, Game of Life and **Doom** (title, demo, a playable game) |
+
+### Lab results
+
+**Nov 26** (Victor and Ariel). Everything worked on the first try.
+
+| Build | What we checked | Result |
+|---|---|---|
+| `program` (`count_value_in1`) | Register view: SW9 up, SW4–0 = 01011 | ✅ HEX `11` `0004`: count = 4, as expected |
+| `top_life` | Glider, run/pause, random board, generation number on HEX, live-cell bar on LEDs | ✅ |
+| `top_doom` | Image and WAD over JTAG, KEY0, title screen, attract demo, menus, new game, walk, turn, fire | ✅ The controls all worked |
+| `top_doom` | Restart with KEY1, then KEY0 | ⚠️ Bug found: Doom starts but its menu opens and can't be used ([details](/doom/#on-the-board-nov-26)) |
+
+Times were not measured with a clock. What simulation predicts for the same design: title screen **~1.2 s** after KEY0 (1.15 s, 28.7 M cycles at 25 MHz) and the demo at **~7.8 frames per second**.
+
+## How we worked
+
+- **GitHub Project board:** Backlog → To do → In progress → In review → Needs lab → Done. At most 2 cards in progress per person.
+- **One branch per task**, from an up-to-date `main`; `main` only changes through pull requests. Every PR has evidence (ModelSim, MARS or a board photo), and one person reviews and merges.
+- **Contracts first:** addresses, the memory map, the pipeline rules and the MMIO registers were agreed in `docs/contracts.md` before writing the modules that depend on them.
+- **Simulation before the lab:** nothing went to the board without passing simulation first, and every lab visit had a checklist.
+
+## Problems and agreements
+
+<Placeholder kind="text" what="Complete the log: problems each member found, who solved them, and what was agreed">
+	<p>The rows below are the ones documented in the repository. Add your own (a bug you found, a decision you made).</p>
+</Placeholder>
+
+| Date | Problem or decision | What we did | Who |
+|---|---|---|---|
+| Nov 18 | The spec asks for PC = 0, one byte per address, big-endian, the professor's `add sub addi` codes and a visible halt; our first design differed | Changed all of them; kept the pipeline, MARS's memory map and the delay slot, which GCC needs ([where we differ, and why](/objectives/#where-we-differ-from-the-spec)) | Team |
+| Nov 18 | A Gosper glider gun is 36 columns wide and doesn't fit the 32-column board | 4th pattern = R-pentomino | Yocelyn (game), Ariel (fix) |
+| — | The spec's model has no delay slot, but GCC needs one | The CPU keeps it; the assembler inserts a `nop` in every delay slot | Ariel (CPU), Uriel (assembler) |
+| Nov 22 | The cross-compiler's `libgcc` is built for a MIPS with an FPU: it would run wrong silently | Our own soft-float and 64-bit division, and `elf2hex.py --isa` stops the build on any instruction the CPU doesn't run | Uriel, Ariel |
+| Nov 22 | GCC emitted 48 `lwl`/`lwr`/`swl`/`swr` for Doom's packed structures | Built Doom with `-mmemcpy` and `PACKEDATTR` empty: none left, same structure layout | Ariel |
+| Nov 22 | Doom doesn't fit on chip (code + data + heap + WAD ≫ 182 KB) | The whole team decided: Doom runs from the SDRAM, behind an instruction cache; the stack stays on chip | Team |
+| Nov 23 | Doom at 4.2 frames per second in simulation | 16 KB data cache: 7.8 frames per second | Uriel, Victor, Ariel |
+| Nov 26 | Before the lab: `doom.bin` was older than the WAD-in-memory (DOOM-3) and controls (DOOM-8) changes | Rebuilt it and checked the boot in Verilator (title screen) before going: Doom worked on the board on the first try | Ariel |
+| Nov 26 | Bug: after KEY1 + KEY0, Doom starts but its menu doesn't respond | Documented as a known bug. A full restart (program the `.sof`, load both files, KEY0) works | Victor, Ariel |
+
+## Declaration of AI use
+
+The spec asks to declare, **per module**, the tool, the purpose, what we kept or discarded and how we checked it. Our rule (`docs/workflow.md`): AI is used wherever it saves time, the test is asked for together with the module, and **nothing generated is done until a test proves it works**. Every member must be able to explain their module without notes.
+
+<Placeholder kind="text" what="Each owner fills in the Tool, Purpose and Kept / discarded columns for their modules (or writes 'no AI')">
+	<p>The "How we checked it" column is already filled from the real tests.</p>
+</Placeholder>
+
+| Module | Owner | Tool | Purpose | Kept / discarded | How we checked it |
+|---|---|---|---|---|---|
+| CPU datapath, control, pipeline, hazard unit (`rtl/`) | Victor | TODO | TODO | TODO | `tc4.do`, `tc5.do`, `cpu6.do`, `cpu11.do`, traces, MARS drill |
+| Full MIPS I, multiply/divide | Victor, Ariel | TODO | TODO | TODO | Trace comparison with the reference simulator in Verilator |
+| Video, MMIO, top levels, halt (`rtl/`, `quartus/`) | Ariel | TODO | TODO | TODO | `mmio.do`, `halt.do`, `cpu14.do`, the board |
+| SDRAM bridge, caches, `top_doom` | Ariel | TODO | TODO | TODO | `doom_mem.do` with Intel's controller model, Verilator with random delays, Doom in Verilator |
+| Assembler (`src/assembler/`) | Uriel | TODO | TODO | TODO | Dumps compared with MARS, `check_asm_errors.py`, `drill.py` |
+| Reference simulator, drill, GCC setup, C library, Doom build (`src/tools/`, `src/c/`) | Uriel | TODO | TODO | TODO | Trace comparison, millions of random soft-float and division checks against the PC |
+| Game of Life, test programs, algorithm (`src/programs/`) | Yocelyn | TODO | TODO | TODO | MARS, `life.do`, `tc15.do`, the board |
+| Doom platform layer (`src/doom/`) | Yocelyn, Ariel | TODO | TODO | TODO | Doom on the PC with the same code, then Verilator pixel comparison |
+| Website and report (`web/`) | Yocelyn, Ariel | TODO | TODO | TODO | Every number and table checked against the repository and the test results |

@@ -1,12 +1,12 @@
 ---
 title: MIPS on the DE10-Lite
-description: A pipelined MIPS processor in Verilog, running Conway's Game of Life and Doom on an FPGA.
+description: A 5-stage pipelined MIPS processor in Verilog with our own assembler, running the graded algorithm, Conway's Game of Life and Doom on an FPGA.
 template: splash
 hero:
-  tagline: A pipelined MIPS processor in Verilog, with our own assembler, running Conway's Game of Life and Doom on the DE10-Lite.
+  tagline: A 5-stage pipelined MIPS processor in Verilog, with our own assembler, running the graded algorithm, Conway's Game of Life and Doom on the DE10-Lite.
   actions:
-    - text: The CPU
-      link: /cpu/
+    - text: Explore the project
+      link: /objectives/
       icon: right-arrow
     - text: GitHub
       link: https://github.com/Branch-to-Hell/mips
@@ -14,32 +14,64 @@ hero:
       variant: minimal
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+import { Image } from 'astro:assets';
+import Placeholder from '../../components/Placeholder.astro';
+import doomShooting from '../../assets/lab/doom-shooting.jpg';
 
-## The project
+<figure class="media">
+	<Image src={doomShooting} alt="Doom on the VGA monitor, driven by our MIPS on the DE10-Lite: the player fires the pistol in E1M1" />
+	<figcaption>Doom on our MIPS, on the DE10-Lite's VGA output (Nov 26). The CPU, the memory system and the video are ours; the game is the original, compiled with GCC.</figcaption>
+</figure>
 
+## One processor, three levels
+
+The same CPU and the same system (`rtl/life_system.v`) run all three. Each level only adds what the previous one didn't need.
+
+<div class="levels">
 <CardGrid>
-	<Card title="CPU" icon="setting">
-		5-stage pipelined MIPS with a hazard detection unit and one branch delay slot.
-		[Read more](/cpu/)
+	<Card title="1. The professor's spec" icon="setting">
+		Datapath, control and the 12 required instructions, our own assembler, and the graded algorithm
+		(frequency of a value) with its tests and traces.
+		[Datapath and control](/datapath/)
 	</Card>
-	<Card title="Assembler" icon="document">
-		Our own assembler turns MIPS assembly into memory images for the board.
-		[Read more](/assembler/)
+	<Card title="2. Game of Life" icon="puzzle">
+		Conway's Game of Life in assembly on VGA, controlled with the switches and keys. Everything the CPU
+		talks to is just memory.
+		[Game of Life](/game-of-life/)
 	</Card>
-	<Card title="Game of Life" icon="puzzle">
-		Conway's Game of Life on VGA, controlled with the switches and keys.
-		[Read more](/game-of-life/)
-	</Card>
-	<Card title="Doom" icon="rocket">
-		The original Doom, compiled with GCC, running on our CPU.
-		[Read more](/doom/)
+	<Card title="3. Doom" icon="rocket">
+		The original Doom, compiled with GCC, running from the board's SDRAM on the same CPU, with
+		caches, a 256-color video mode and a boot loader.
+		[Doom](/doom/)
 	</Card>
 </CardGrid>
+</div>
+
+## In numbers
+
+| | |
+|---|---|
+| CPU | 5-stage pipeline (IF, ID, EX, MEM, WB), hazard unit, 1 branch delay slot, 25 MHz |
+| Instructions | The 12 required + the rest of the MIPS I integer set (~50), so GCC's code runs |
+| Game of Life build | 5,528 logic elements (11 % of the FPGA), 26 % of the memory bits, 7.6 ns of setup slack |
+| Doom build | 8,018 logic elements (16 %), 147 of 182 memory blocks, 5.4 ns of setup slack |
+| Doom | **Runs on the board**: title screen, demo and a playable game (Nov 26). In simulation: title 1.15 s after KEY0, ~7.8 frames per second |
+| Tests | Every case of the professor's list, all PASS ([tests](/tests/)) |
+
+## Graded version
+
+<Placeholder kind="link" what="Link to the graded version: the tag or commit we hand in (DEMO-1)">
+	<p>Example: <code>https://github.com/Branch-to-Hell/mips/releases/tag/demo</code>, or the commit URL. The professor asks for it next to the report link.</p>
+</Placeholder>
 
 ## Team
 
-- Ariel: FPGA platform
-- Yocelyn: software and website
-- Uriel: assembler and toolchain
-- Victor: CPU core
+| Member | GitHub | Role | Main folders |
+|---|---|---|---|
+| Ariel | [@Rxjaz](https://github.com/Rxjaz) | FPGA platform lead: top levels, video, MMIO, SDRAM, Doom on the board | `rtl/` (platform), `quartus/` |
+| Victor | [@VictorManuA](https://github.com/VictorManuA) | CPU core lead: datapath, control, pipeline, hazard unit | `rtl/` (CPU), `verif/` |
+| Uriel | [@moonlight9515l](https://github.com/moonlight9515l) | Toolchain lead: assembler, reference simulator, GCC, Doom build | `src/assembler/`, `src/tools/`, `src/doom/` |
+| Yocelyn | [@altamirayocelyn](https://github.com/altamirayocelyn) | Software and website lead: Game of Life, test programs, report | `src/programs/`, `web/`, `docs/` |
+
+<LinkCard title="Repository" href="https://github.com/Branch-to-Hell/mips" description="Branch-to-Hell/mips: RTL, VERIF, DOCS and SRC folders, with a README to build and run everything." />
