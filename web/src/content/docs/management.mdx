@@ -82,10 +82,10 @@ The spec asks to declare, **per module**, the tool, the purpose, what we kept or
 |---|---|---|---|---|---|
 | CPU datapath, control, pipeline, hazard unit (`rtl/`) | Victor | TODO | TODO | TODO | `tc4.do`, `tc5.do`, `cpu6.do`, `cpu11.do`, traces, MARS drill |
 | Full MIPS I, multiply/divide | Victor, Ariel | TODO | TODO | TODO | Trace comparison with the reference simulator in Verilator |
-| Video, MMIO, top levels, halt (`rtl/`, `quartus/`) | Ariel | TODO | TODO | TODO | `mmio.do`, `halt.do`, `cpu14.do`, the board |
-| SDRAM bridge, caches, `top_doom` | Ariel | TODO | TODO | TODO | `doom_mem.do` with Intel's controller model, Verilator with random delays, Doom in Verilator |
+| Video, MMIO, top levels, halt (`rtl/`, `quartus/`) | Ariel | Claude Code | Write the Verilog, the testbenches and the Quartus settings from `contracts.md`; find bugs from ModelSim output | Kept what passed its testbench and then worked on the board; what failed was fixed or rewritten before the PR | `mmio.do`, `halt.do`, `cpu14.do`, the board |
+| SDRAM bridge, caches, `top_doom` | Ariel | Claude Code | Design and write the bridge and both caches, the Platform Designer system and the Verilator tests with random delays | Kept after passing with Intel's controller model, random delays and Doom in Verilator; the data cache stayed write-through (see Ariel's conclusion) | `doom_mem.do` with Intel's controller model, Verilator with random delays, Doom in Verilator |
 | Assembler (`src/assembler/`) | Uriel | TODO | TODO | TODO | Dumps compared with MARS, `check_asm_errors.py`, `drill.py` |
 | Reference simulator, drill, GCC setup, C library, Doom build (`src/tools/`, `src/c/`) | Uriel | TODO | TODO | TODO | Trace comparison, millions of random soft-float and division checks against the PC |
 | Game of Life, test programs, algorithm (`src/programs/`) | Yocelyn | TODO | TODO | TODO | MARS, `life.do`, `tc15.do`, the board |
 | Doom platform layer (`src/doom/`) | Yocelyn, Ariel | TODO | TODO | TODO | Doom on the PC with the same code, then Verilator pixel comparison |
-| Website and report (`web/`) | Yocelyn, Ariel | TODO | TODO | TODO | Every number and table checked against the repository and the test results |
+| Website and report (`web/`) | Yocelyn, Ariel | Claude Code | Ariel: structure, diagrams and tables built from the repository's docs, test results and lab photos. Yocelyn: TODO | Ariel: kept after checking every number against the repository; sections the team didn't want were removed. Yocelyn: TODO | Every number and table checked against the repository and the test results |

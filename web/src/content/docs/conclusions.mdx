@@ -15,11 +15,54 @@ The traces in [Tests and traces](/tests/#traces-r-i-j) show the format; each mem
 
 ## Ariel
 
-<Placeholder kind="text" what="Ariel's individual sheet">
-	<p><strong>Contribution:</strong> link to a PR or commit (e.g. the SDRAM bridge #125, the data cache #129, the visible halt #108).</p>
-	<p><strong>Annotated trace:</strong> one instruction you can run again, with your notes.</p>
-	<p><strong>Conclusion:</strong> a decision or fix of your own, and what you learned from it.</p>
-</Placeholder>
+### Contribution: Doom's memory system
+
+[PR #125](https://github.com/Branch-to-Hell/mips/pull/125) (SDRAM bridge, instruction cache and `top_doom`) and [PR #129](https://github.com/Branch-to-Hell/mips/pull/129) (data cache).
+
+Doom needs more than 10 MB and the FPGA has ~182 KB of memory, so it runs from the board's 64 MB SDRAM. My part was everything between the CPU and the SDRAM controller:
+
+- **Bridge** (`rtl/sdram_bridge.v`): turns a load or store into a request for Intel's SDRAM controller and holds the CPU with `mem_stall` until it's done (a load takes ~8 cycles instead of 1). It also swaps the bytes, because the controller is little-endian and our CPU big-endian.
+- **Instruction cache** (`rtl/icache.v`): 8 KB, direct-mapped, 16-byte lines. A hit gives one instruction per cycle.
+- **Data cache** (`rtl/dcache.v`): 16 KB, direct-mapped, write-through. It took Doom from **4.2 to 7.8 frames per second** in simulation.
+
+Checked with `verif/doom_mem.do` (Intel's real controller and its memory model), Verilator with random memory delays, Doom in Verilator, and on the board on Nov 26.
+
+### Annotated trace: `lw $t3, 4($s1)`
+
+From [`verif/traces/trace_I.txt`](https://github.com/Branch-to-Hell/mips/blob/main/verif/traces/trace_I.txt). To reproduce it: `python src/assembler/assembler.py src/programs/tc16_trace.asm`, then `do trace.do` in ModelSim from `verif/`.
+
+```
+Before: $s1 = 10010000  $t3 = ffffffff  mem[0x10010004] = cafe1234
+
+Cycle 1  IF   PC = 00000020 -> bytes 8e 2b 00 04 -> word 8e2b0004
+```
+The 4 bytes come from the 4 banks of the instruction memory, one byte per address, joined big-endian.
+
+```
+Cycle 2  ID   fields I: opcode = 100011, rs = 17 ($s1), rt = 11 ($t3), immediate = 0004 -> extended 00000004
+              control: RegDst = 0, ALUSrc = 1, MemtoReg = 1, RegWrite = 1, MemRead = 1, MemWrite = 0
+              register file: A = R[rs] = 10010000 · hazard unit: stall = 0
+```
+Opcode 35 is `lw`. The destination is `rt` (RegDst = 0), the ALU takes the immediate (ALUSrc = 1), and the value written back comes from memory (MemtoReg = 1). `Reg…` signals are about the register file and `Mem…` about data memory: a `lw` reads memory and writes a register. No stall: no older instruction writes `$s1`.
+
+```
+Cycle 3  EX   ALU: 10010000 + 00000004 = 10010004
+Cycle 4  MEM  memory bus: address = 10010004, read = 1 -> read data = cafe1234
+```
+The decoder sees `0x1001…`, the on-chip data memory, which answers in the same cycle. In Doom the same `lw` to an address `0x2000…` goes to the data cache: a hit also answers in the same cycle, and a miss holds the whole pipeline with `mem_stall` for ~8 cycles while the line comes from the SDRAM. That is my contribution seen from one instruction.
+
+```
+Cycle 5  WB   $t3 <= cafe1234 (bypassed to ID during the same cycle)
+
+After : $s1 = 10010000  $t3 = cafe1234  mem[0x10010004] = cafe1234
+```
+Only `$t3` changed; memory is the same (MemWrite = 0).
+
+### Conclusion: a write-through data cache
+
+When I designed the data cache I chose **write-through**: every store goes to the SDRAM, and also into the cache if the line is there. A write-back cache would be faster for stores, because it writes the SDRAM only when a line is replaced, but then the SDRAM can hold old data. Our SDRAM has two other readers that don't go through the data cache: the instruction cache and the JTAG master we use to load Doom and the WAD. With write-through the SDRAM is always up to date, so none of them can read stale data, and there is nothing to write back when a line is replaced.
+
+The cost is that every store waits ~3 cycles for the SDRAM. Even so, the data cache almost doubled Doom's speed (4.2 → 7.8 frames per second), because most accesses are loads that hit. What I learned: a cache is not only about speed. Who else reads the same memory decides how it has to write, and choosing the simpler, always-correct option first let us get Doom running on the board on the first try.
 
 ## Victor
 
