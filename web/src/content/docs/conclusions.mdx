@@ -74,11 +74,47 @@ The cost is that every store waits ~3 cycles for the SDRAM. Even so, the data ca
 
 ## Uriel
 
-<Placeholder kind="text" what="Uriel's individual sheet">
-	<p><strong>Contribution:</strong> link to a PR or commit (e.g. assembler v1 #68, assembler v3 #102, reference simulator #110).</p>
-	<p><strong>Annotated trace:</strong> one instruction you can run again, with your notes.</p>
-	<p><strong>Conclusion:</strong> a decision or fix of your own, and what you learned from it.</p>
-</Placeholder>
+### Contribution: the assembler and the reference simulator
+
+[PR #111](https://github.com/Branch-to-Hell/mips/pull/111) added the phase 2 encodings, the pseudo-instructions `li`, `la` and `move`, and the `nop` after every jump and branch. [PR #110](https://github.com/Branch-to-Hell/mips/pull/110) added `ref_sim.py`, the software reference that prints every register write. The assembler's diagnostics (one example per error, with the line number) and the board images are part of the same work.
+
+Checked with `test_pseudo` and `test_phase2` against MARS's Data Segment, `t1_alu` against MARS's registers, and `check_asm_errors.py`, which runs the eight error examples.
+
+### Annotated trace: `add $t2, $t0, $t1`
+
+From [`verif/traces/trace_R.txt`](https://github.com/Branch-to-Hell/mips/blob/main/verif/traces/trace_R.txt). To reproduce it: `python src/assembler/assembler.py src/programs/tc16_trace.asm`, then `do trace.do` in ModelSim from `verif/`.
+
+The instruction is at `0x0000001C`, and the assembler encodes it as `0x01095021`. Before it runs, `$t0 = 5` and `$t1 = 7`.
+
+```
+Cycle 1  IF   PC = 0000001c -> word 01095021
+```
+
+```
+Cycle 2  ID   fields R: opcode = 000000, rs = 8 ($t0), rt = 9 ($t1), rd = 10 ($t2), shamt = 0, funct = 100001 (0x21)
+              control: RegDst = 1, RegWrite = 1, ALUSrc = 0, ALUOp = 10, ALU control = 0010 (add)
+              register file: A = R[rs] = 00000005, B = R[rt] = 00000007, destination = 10 ($t2)
+              hazard unit: stall = 0, redirect = 0
+```
+`RegDst = 1` selects `rd` as the destination, not `rt`, and `ALUOp = 10` tells the ALU control to read `funct` to pick the operation. Here `funct = 0x21` means add.
+
+```
+Cycle 3  EX   ALU: 00000005 + 00000007 = 0000000c
+```
+The ALU does the addition. `ALUSrc = 0` means the second operand is `$t1` and not the immediate.
+
+```
+Cycle 4  MEM  no memory access (MemRead = 0, MemWrite = 0); value to MEM/WB = 0000000c
+Cycle 5  WB   $t2 <= 0000000c at the end of the cycle
+```
+
+```
+After : $t0 = 00000005  $t1 = 00000007  $t2 = 0000000c
+```
+
+### Conclusion: where the files go and how the passes work
+
+The assembler writes its images to `mem/` by default, because that is where Quartus (at compile time) and ModelSim (`$readmemh`) look for them. `-o <folder>` is for images that must not replace the ones the board loads. The error checker uses `build/asm_errors`, so it never touches the program on the board. The two `quartus/program.qsf` lines are printed only when the output is `mem/`. What I learned: the first pass goes line by line, counts the words each line takes (including the `nop` after a branch or jump) and records the address of every label. The second pass turns the instructions into 32-bit words, now that every label has an address, and writes the `.hex` files.
 
 ## Yocelyn
 
