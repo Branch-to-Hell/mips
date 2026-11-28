@@ -19,16 +19,17 @@ cd ../..
 python src/tools/check_asm_errors.py
 ```
 
-Results on Nov 21 (all PASS):
+Results on Nov 21, run again on Nov 27 with the same results (all PASS). Screenshot of the Nov 27 run: [`docs/evidence/2026-11-27_tests_pass_modelsim.png`](../evidence/2026-11-27_tests_pass_modelsim.png).
 
 | Testbench | What it runs | Result |
 |---|---|---|
 | `tc4.do` | the 6 `tc4_*.asm` programs, one per instruction group | 6/6 PASS (86 to 152 cycles each) |
 | `tc5.do` | the 4 `tc5_*.asm` hazard programs | 4/4 PASS |
+| `tc15.do` | the graded algorithm with its 3 inputs (`count_value_in1..3.asm`) | 3/3 PASS (results 4, 4, 0) |
 | `trace.do` | `tc16_trace.asm`: writes the 3 traces below | PASS |
 | `instruction_memory.do` | CPU-12: every fetch of `life_board` (323 instructions) at text base 0 and 0x00400000 | PASS, 647 fetches |
 | `cpu11.do` | professor's encodings `0x21 0x23 0x09` and the standard ones | PASS, 20 checks |
-| `cpu14.do`, `halt.do` | CPU-14 invalid accesses, and how the board shows them | PASS (7 cases, 34 checks; decoder 19 addresses) |
+| `cpu14.do`, `halt.do` | CPU-14 invalid accesses, and how the board shows them | PASS (10 cases, 47 checks; decoder 19 addresses) |
 | `cpu6.do` | delay slot: the instruction after a branch/jump always runs | PASS |
 | `check_asm_errors.py` | the 8 `src/programs/errors/*.asm` examples | 8/8 PASS |
 
@@ -77,7 +78,7 @@ Covers the whole Phase 1 set (20 instructions plus `addu subu addiu`), so the pr
 | Case | Test |
 |---|---|
 | Assembler errors | `python src/tools/check_asm_errors.py`: the 8 examples in `src/programs/errors/` (unknown mnemonic, invalid register, duplicate label, undefined label, out of range, wrong number of operands, `j` outside its 256 MiB region, misaligned target). Each file starts with its expected message; the script checks the message and exit code 1 |
-| Invalid data access (CPU-14) | `cpu14.do`: 7 cases (fetch outside text, misaligned fetch, `lw`/`sw` with no region and misaligned, precise order), nothing is written. `halt.do`: on `life_system` (the board hardware), `sw` to 0x7FFFF000 halts with LEDR = 0x203 and HEX = `E3F000` |
+| Invalid data access (CPU-14) | `cpu14.do`: 10 cases (fetch outside text, misaligned fetch, `lw`/`sw` with no region and misaligned, precise order, misaligned `lh`/`sh`, and `lb` at an odd address, which is legal), nothing is written. `halt.do`: on `life_system` (the board hardware), `sw` to 0x7FFFF000 halts with LEDR = 0x203 and HEX = `E3F000` |
 
 ## 4. Traces (R, I, J)
 

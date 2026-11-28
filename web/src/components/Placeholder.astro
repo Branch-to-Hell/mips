@@ -1,0 +1,17 @@
+---
+/* Marks content the team still has to add (photo, video, text).
+   Every one of them says "TODO" in the source, so `grep -rn "<Placeholder" web/src` lists what's missing. */
+interface Props {
+	/** What goes here, e.g. "Photo: the board running Doom on the monitor" */
+	what: string;
+	/** Kind of content: photo, video, text... */
+	kind?: string;
+}
+const { what, kind = 'missing' } = Astro.props;
+---
+
+<div class="placeholder" role="note">
+	<span class="ph-label">TODO · {kind.toUpperCase()}</span>
+	<div class="ph-title">{what}</div>
+	<slot />
+</div>

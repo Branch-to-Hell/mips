@@ -1,0 +1,109 @@
+---
+/* The whole system (rtl/life_system.v): the CPU, the address decoder and every device on the bus.
+   Orange dashed = what top_doom adds (video mode B, the caches and the SDRAM). The Game of Life
+   uses only the solid part; Doom runs on the same life_system with MODE_B = 1 and EXT_BUS = 1. */
+import FullscreenButton from './FullscreenButton.astro';
+---
+
+<figure class="diagram compact">
+	<svg viewBox="0 0 1000 420" role="img" aria-labelledby="sys-title sys-desc">
+		<title id="sys-title">The system around the CPU</title>
+		<desc id="sys-desc">
+			The CPU sends every load and store to the address decoder, which picks data memory, stack, video
+			mode A or MMIO by the address. Doom adds video mode B and the SDRAM behind two caches.
+		</desc>
+		<defs>
+			<marker id="sys-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+				<path d="M0,0 L10,5 L0,10 z" class="arrow"></path>
+			</marker>
+			<marker id="sys-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+				<path d="M0,0 L10,5 L0,10 z" class="arrow-doom"></path>
+			</marker>
+			<marker id="sys-c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+				<path d="M0,0 L10,5 L0,10 z" class="arrow-ctl"></path>
+			</marker>
+		</defs>
+
+		<!-- CPU and its instruction memory -->
+		<rect class="box" x="30" y="30" width="200" height="56" rx="6"></rect>
+		<text class="tb" x="130" y="54" text-anchor="middle">Instruction memory</text>
+		<text class="ts" x="130" y="72" text-anchor="middle">16 KB on chip · the program .hex</text>
+		<path class="wire" d="M130 86 V150" marker-end="url(#sys-a)"></path>
+
+		<rect class="preg" x="30" y="150" width="200" height="110" rx="6"></rect>
+		<text class="tb" x="130" y="192" text-anchor="middle">CPU</text>
+		<text class="t" x="130" y="212" text-anchor="middle">mips_pipeline</text>
+		<text class="ts" x="130" y="230" text-anchor="middle">5 stages · 25 MHz</text>
+
+		<path class="wire" d="M230 205 H320" marker-end="url(#sys-a)"></path>
+		<text class="ts" x="275" y="198" text-anchor="middle">lw / sw</text>
+
+		<!-- Decoder -->
+		<rect class="box" x="320" y="160" width="150" height="90" rx="6"></rect>
+		<text class="tb" x="395" y="195" text-anchor="middle">Address</text>
+		<text class="tb" x="395" y="212" text-anchor="middle">decoder</text>
+		<text class="ts" x="395" y="232" text-anchor="middle">life_system.v</text>
+		<path class="ctl" d="M395 250 V296" marker-end="url(#sys-c)"></path>
+		<text class="ts" x="395" y="312" text-anchor="middle">no region → halt</text>
+		<text class="ts" x="395" y="326" text-anchor="middle">E + cause on HEX</text>
+
+		<!-- Bus to the devices -->
+		<path class="wire" d="M470 205 H515"></path>
+		<path class="wire" d="M515 43 V211"></path>
+		<path class="doom" d="M515 211 V363"></path>
+		<circle class="dot" cx="515" cy="205" r="3"></circle>
+		<path class="wire" d="M515 43 H560" marker-end="url(#sys-a)"></path>
+		<path class="wire" d="M515 99 H560" marker-end="url(#sys-a)"></path>
+		<path class="wire" d="M515 155 H560" marker-end="url(#sys-a)"></path>
+		<path class="wire" d="M515 211 H560" marker-end="url(#sys-a)"></path>
+		<path class="doom" d="M515 285 H560" marker-end="url(#sys-d)"></path>
+		<path class="doom" d="M515 363 H560" marker-end="url(#sys-d)"></path>
+
+		<rect class="box" x="560" y="20" width="240" height="46" rx="4"></rect>
+		<text class="t" x="680" y="39" text-anchor="middle">Data memory · 16 KB</text>
+		<text class="ts" x="680" y="56" text-anchor="middle">0x1001_0000 · e.g. the Life boards</text>
+
+		<rect class="box" x="560" y="76" width="240" height="46" rx="4"></rect>
+		<text class="t" x="680" y="95" text-anchor="middle">Stack · 4 KB</text>
+		<text class="ts" x="680" y="112" text-anchor="middle">0x7FFF_E000</text>
+
+		<rect class="box" x="560" y="132" width="240" height="46" rx="4"></rect>
+		<text class="t" x="680" y="151" text-anchor="middle">Video mode A · 128×96</text>
+		<text class="ts" x="680" y="168" text-anchor="middle">0x1004_0000 · one word per pixel</text>
+
+		<rect class="box" x="560" y="188" width="240" height="46" rx="4"></rect>
+		<text class="t" x="680" y="207" text-anchor="middle">MMIO</text>
+		<text class="ts" x="680" y="224" text-anchor="middle">0xFFFF_0010 · SW, KEY, LEDR, HEX, timer</text>
+
+		<rect class="doom-box" x="560" y="262" width="240" height="46" rx="4"></rect>
+		<text class="t" x="680" y="281" text-anchor="middle">Video mode B · 320×200 + palette</text>
+		<text class="ts" x="680" y="298" text-anchor="middle">0x1005_0000 · one byte per pixel</text>
+
+		<rect class="doom-box" x="560" y="340" width="240" height="46" rx="4"></rect>
+		<text class="t" x="680" y="359" text-anchor="middle">Caches → SDRAM · 64 MB</text>
+		<text class="ts" x="680" y="376" text-anchor="middle">0x2000_0000 · I-cache 8 KB, D-cache 16 KB</text>
+		<text class="ts" x="680" y="404" text-anchor="middle">Doom + WAD loaded over JTAG</text>
+
+		<!-- Outside the FPGA -->
+		<rect class="box" x="860" y="120" width="120" height="60" rx="6"></rect>
+		<text class="t" x="920" y="148" text-anchor="middle">VGA monitor</text>
+		<text class="ts" x="920" y="165" text-anchor="middle">640×480</text>
+		<path class="wire" d="M800 155 H860" marker-end="url(#sys-a)"></path>
+		<path class="doom" d="M800 285 H830 V172 H860" marker-end="url(#sys-d)"></path>
+
+		<rect class="box" x="860" y="196" width="120" height="50" rx="6"></rect>
+		<text class="t" x="920" y="218" text-anchor="middle">Board I/O</text>
+		<text class="ts" x="920" y="235" text-anchor="middle">SW · KEY · LEDR · HEX</text>
+		<path class="wire" d="M800 211 H860" marker-start="url(#sys-a)" marker-end="url(#sys-a)"></path>
+
+		<!-- Doom fetches its code from the SDRAM -->
+		<path class="doom" d="M560 380 H130 V260" marker-end="url(#sys-d)"></path>
+		<text class="ts" x="150" y="398">Doom: instructions come from the SDRAM through the instruction cache</text>
+	</svg>
+	<figcaption class="diagram-legend">
+		<span>Game of Life and the graded programs (top_life, top_program)</span>
+		<span class="lg-doom">added for Doom (top_doom)</span>
+		<span class="lg-ctl">halt on an invalid address</span>
+		<FullscreenButton />
+	</figcaption>
+</figure>

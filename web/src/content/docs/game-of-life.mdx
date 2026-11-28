@@ -1,0 +1,149 @@
+---
+title: Game of Life
+description: Conway's Game of Life in MIPS assembly on the board - the rules, how the board lives in memory, the generation loop, drawing on VGA and the controls.
+---
+
+import { Image } from 'astro:assets';
+import lifeBoard from '../../assets/lab/life-board.jpg';
+
+:::tip[In 30 seconds]
+- A **32 × 24** board in data memory, **two copies** (read one, write the other), and the 3 rules applied to every cell every generation.
+- Everything is `lw`/`sw`: the board is memory, the **screen is memory** (framebuffer), and the **switches, keys, LEDs and displays are memory** (MMIO).
+- 323 instructions written by hand in assembly (`src/programs/life_board.asm`), running on the pipelined CPU.
+:::
+
+<figure class="media">
+	<video autoplay loop muted playsinline poster="/media/life.jpg" src="/media/life.mp4"></video>
+	<figcaption>On the board (Nov 26): the glider running, then a random board loaded with SW5–4 = 01 and KEY0.</figcaption>
+</figure>
+
+## The rules
+
+Each cell is **alive** or **dead** and has 8 neighbours. Every generation, for every cell:
+
+1. **Exactly 3** live neighbours → it is alive (a dead cell is born).
+2. **Alive with 2** → it survives.
+3. **Anything else** → it is dead.
+
+The edges wrap around: the left column is a neighbour of the right one, the top row of the bottom one.
+
+## The board in memory
+
+Memory is a long row of numbered bytes, so the 2-D board is stored **row after row**. Each cell is one **word** (4 bytes) holding 0 (dead) or 1 (alive):
+
+```
+address = base + (row × 32 + column) × 4
+```
+
+For example, row 1, column 2 is `(1 × 32 + 2) × 4 = 136`. That is exactly one of the five cells of the starting glider:
+
+```asm
+lp_glider:
+    addi $t0, $zero, 1
+    sw   $t0, 136($s1)          # row 1, col 2
+    sw   $t0, 268($s1)          # row 2, col 3
+    sw   $t0, 388($s1)          # row 3, col 1
+    sw   $t0, 392($s1)          # row 3, col 2
+    sw   $t0, 396($s1)          # row 3, col 3
+```
+
+In assembly the multiplications are shifts: `× 32` is `sll 5` and `× 4` is `sll 2`.
+
+### Two boards
+
+The new generation must be computed from the **old** one. Writing over the same board would make later cells count neighbours that already changed. So there are two boards of 768 words (3,072 bytes each): `$s1` points to the current one (read) and `$s2` to the next one (written). At the end of a generation the **pointers are swapped**, three instructions instead of copying 768 words:
+
+```asm
+    addi $t0, $s1, 0            # swap current and next
+    addi $s1, $s2, 0
+    addi $s2, $t0, 0
+```
+
+## One generation
+
+```
+for each row (0..23):
+    for each column (0..31):
+        neighbours = 0
+        for each of the 8 neighbours:
+            neighbours += board_A[neighbour]     # lw: 1 if alive, 0 if dead
+        apply the 3 rules
+        board_B[cell] = 0 or 1                   # sw
+swap A and B
+```
+
+Because alive = 1 and dead = 0, counting live neighbours is just **adding** what was read. One generation does 768 cells × 8 neighbours = **6,144 loads**.
+
+The rules are three decisions:
+
+```asm
+    addi $t9, $zero, 3
+    beq  $t2, $t9, gen_live     # 3 neighbours: alive
+    beq  $t7, $zero, gen_dead   # dead without 3: stays dead
+    addi $t9, $zero, 2
+    beq  $t2, $t9, gen_live     # alive with 2: survives
+gen_dead:
+    sw   $zero, 0($t8)
+```
+
+**Wrap-around:** 32 columns is a power of 2, so `andi $t6, $t6, 31` turns −1 into 31 and 32 into 0 for free. 24 rows isn't, so rows use two comparisons (−1 → 23, 24 → 0).
+
+**Hazards in practice:** the neighbour loop has two back-to-back dependencies (`add $t5…` → `lw …($t5)` → `add …$t6`), so the [hazard unit](/pipeline/#data-hazards-and-stalls) stalls 2 cycles on each. The program needs no extra `nop`s for them.
+
+## Drawing on the monitor
+
+The screen is **video mode A**: a 128 × 96 framebuffer at `0x1004_0000`, **one word per pixel** (`0x00RRGGBB`), the same format as MARS's Bitmap Display. The hardware (`rtl/video_mode_a.v`) reads it all the time and scales each pixel ×5 to 640 × 480 on the VGA.
+
+The board is 32 × 24 cells and the image 128 × 96 pixels, so **each cell is a 4 × 4 block** (16 `sw`):
+
+```
+pixel address = 0x1004_0000 + (pixel_row × 128 + pixel_column) × 4
+block of cell (r, c) starts at  r × 2048 + c × 16
+```
+
+One pixel row is 128 × 4 = **512 bytes**, so the four rows of a block start at offsets 0, 512, 1024 and 1536:
+
+```asm
+    sw   $t3, 0($t4)            # block row 0: 0, 4, 8, 12
+    sw   $t3, 4($t4)
+    ...
+    sw   $t3, 512($t4)          # block row 1: 512 … 524
+    ...
+    sw   $t3, 1536($t4)         # block row 3: 1536 … 1548
+```
+
+`$t3` is white (`0x00FFFFFF`) for a live cell and 0 (black) for a dead one.
+
+## Switches, keys, LEDs and displays
+
+The program reads and writes them with `lw`/`sw` at `0xFFFF_0010`–`0xFFFF_001C` ([MMIO](/memory-io/#memory-mapped-io)). The main loop reads the keys on every pass and keeps the previous value, so it reacts once per **press** (`nor` + `and` find the keys that just went down).
+
+| Control | Running | Paused (edit mode) |
+|---|---|---|
+| **KEY1** | Pause | Run (starts with a generation right away) |
+| **KEY0** | Load the pattern chosen with SW5–4 | Toggle the cell under the cursor |
+| **SW5–4** | Pattern: 00 glider, 01 random, 10 empty, 11 R-pentomino | — |
+| **SW3–0** | Speed: 0 slowest (~0.2 s per generation) to 15 fastest (~20 ms) | — |
+| **SW4–0 / SW9–5** | — | Cursor column (0–31) / row (0–23; 24–31 hide it). The cursor blinks red |
+| **LEDR0** | On while running | Off |
+| **LEDR9–1** | Live-cell bar: one LED per 32 live cells | Same |
+| **HEX** | Generation number | Same |
+
+It starts paused with a glider. To draw from scratch: run, load "empty", pause, draw with the switches and KEY0, then run. A Gosper glider gun is 36 columns wide and doesn't fit in 32, so the 4th pattern is the R-pentomino.
+
+<figure class="media">
+	<Image src={lifeBoard} alt="The Game of Life with a random board on the VGA monitor, next to the DE10-Lite showing the generation number on HEX and the live-cell bar on the LEDs" />
+	<figcaption>On the board (Nov 26): a random board on the monitor, the generation number on the HEX displays and the live-cell bar on the LEDs.</figcaption>
+</figure>
+
+## On the board
+
+| | |
+|---|---|
+| Quartus revision | `top_life` (`rtl/top_life.v`: PLL 50 → 25 MHz, power-up reset, `life_system`) |
+| Program | `mem/life_board_b0..b3.hex`, from `python src/assembler/assembler.py src/programs/life_board.asm` |
+| Resources (Nov 22) | 5,528 logic elements (11 %), 442,368 memory bits (26 %), 8 multipliers |
+| Timing | 7.6 ns of setup slack at 25 MHz |
+| Tested by | `verif/life.do` (the Game of Life on the board's hardware in ModelSim) and `instruction_memory.do` (every fetch) |
+
+The program was first written and checked in **MARS** (`src/programs/life.asm`, with MARS's keyboard simulator instead of the switches), then ported to the board's MMIO. It ran first on the single-cycle CPU, then on the pipeline with no changes.

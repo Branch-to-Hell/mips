@@ -1,0 +1,69 @@
+---
+title: Memory and I/O
+description: The memory map, how the address decoder picks a device, the memory-mapped switches, keys, LEDs and displays, and the visible halt on an invalid access.
+---
+
+import SystemDiagram from '../../components/SystemDiagram.astro';
+
+:::tip[In 30 seconds]
+- The CPU only knows `lw` and `sw` to addresses. **Everything else is memory**: the screen, the switches, the LEDs.
+- The **address decoder** looks at the upper bits of each address and sends the access to the right device, like a mail carrier.
+- An address that belongs to no device **stops the CPU visibly**: `E` and the cause on the HEX displays, nothing written.
+:::
+
+<SystemDiagram />
+
+## Memory map
+
+Data, framebuffer, stack and MMIO follow MARS's default memory map, so every program can be checked in MARS first. Text starts at `0` because the spec asks for an initial PC of 0.
+
+| Region | Addresses | Size | Used by |
+|---|---|---|---|
+| Text (code) | `0x0000_0000` – `0x0000_3FFF` | 16 KB (4,096 instructions) | Every program. PC starts at 0 |
+| Data | `0x1001_0000` – `0x1001_3FFF` | 16 KB | `.data`: the algorithm's inputs, the Life boards |
+| Framebuffer, mode A | `0x1004_0000` – `0x1004_BFFF` | 48 KB (128 × 96 words) | Game of Life |
+| Stack | `0x7FFF_E000` – `0x7FFF_EFFF` | 4 KB | `$sp` starts at `0x7FFF_EFFC` |
+| MMIO | `0xFFFF_0010` – `0xFFFF_0027` | 6 registers | Switches, keys, LEDs, HEX, timer, video mode |
+| Framebuffer, mode B | `0x1005_0000` – `0x1005_F9FF` | 62.5 KB (320 × 200 bytes) | Doom only |
+| Palette, mode B | `0x1005_FC00` – `0x1005_FFFF` | 256 words | Doom only |
+| SDRAM | `0x2000_0000` – `0x23FF_FFFF` | 64 MB | Doom only: code, data, heap and the WAD |
+
+**Big-endian everywhere:** the byte at the lowest address is the most significant one (bits 31–24) of the word, in the instruction memory, the data memory, the assembler's images and the Doom build.
+
+**Timing:** every memory reads on a clock edge, so Quartus can build it from the FPGA's memory blocks (M9K). Data memory, stack, framebuffer and MMIO work on the **falling edge**: the address is ready in the first half of the cycle, and the data in the second.
+
+## Memory-mapped I/O
+
+| Address | Register | Access | What it does |
+|---|---|---|---|
+| `0xFFFF_0010` | SW | read | Bits 9–0 = the 10 switches |
+| `0xFFFF_0014` | KEY | read | Bits 1–0 = the 2 keys, **1 = pressed** (inverted and debounced in hardware) |
+| `0xFFFF_0018` | LEDR | write | Bits 9–0 = the 10 LEDs |
+| `0xFFFF_001C` | HEX | write | Bits 23–0 shown in hexadecimal on the 6 displays |
+| `0xFFFF_0020` | TIMER | read | Milliseconds since reset (Doom's clock) |
+| `0xFFFF_0024` | VIDEO_MODE | write | 0 = mode A, 1 = mode B |
+
+So reading a key is `lw $t1, 0x14($s4)` with `$s4 = 0xFFFF_0000`, and showing a number is `sw $k0, 0x1C($s4)`: the same instructions as for any memory. `rtl/mmio.v` synchronizes the switches, debounces the keys (10 ms) and drives the displays.
+
+### Seeing inside the CPU on the board
+
+- **Register view:** with **SW9 up**, the HEX displays show a register instead of the program's output. SW4–SW0 pick the register (HEX5–HEX4 show its number in decimal), HEX3–HEX0 its value (bits 15–0, or 31–16 with SW5 up).
+- This is how we read the graded algorithm's result on the board ([Algorithm](/algorithm/#on-the-board)).
+
+## Halt on an invalid access
+
+The spec asks to stop invalid accesses visibly. The CPU halts, and the failing instruction writes **nothing** (no register, no memory), when:
+
+- an instruction is **fetched** outside the text region or from an address not aligned to 4, or
+- a **load or store** goes to an address outside every region above, or is misaligned for its size.
+
+Older instructions finish; the failing one and every younger one are dropped. Only a reset leaves the halt.
+
+| On the board | Meaning |
+|---|---|
+| LEDR9 on | Halted |
+| LEDR1–0, HEX4 | Cause: 1 = fetch, 2 = load, 3 = store |
+| HEX5 | `E` |
+| HEX3–HEX0 | The bad address, bits 15–0 (SW8 up: the PC instead) |
+
+Example (`halt.do`): `sw` to `0x7FFF_F000`, just past the stack, halts with LEDR = `0x203` and HEX = `E3F000`.

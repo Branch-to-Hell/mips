@@ -1,0 +1,131 @@
+---
+title: Individual conclusions
+description: Each member's individual sheet - a linked contribution, an annotated trace they can reproduce, and a conclusion about a decision or fix of their own.
+---
+
+import Placeholder from '../../components/Placeholder.astro';
+
+The spec asks every member for an individual sheet with three parts:
+
+1. **A contribution** linked to a commit, review or test.
+2. **An annotated trace** they can reproduce (PC, bytes, fields, control signals, buffers, state before and after).
+3. **A conclusion** about a decision or a fix of their own.
+
+The traces in [Tests and traces](/tests/#traces-r-i-j) show the format; each member annotates one of their own.
+
+## Ariel
+
+### Contribution: Doom's memory system
+
+[PR #125](https://github.com/Branch-to-Hell/mips/pull/125) (SDRAM bridge, instruction cache and `top_doom`) and [PR #129](https://github.com/Branch-to-Hell/mips/pull/129) (data cache).
+
+Doom needs more than 10 MB and the FPGA has ~182 KB of memory, so it runs from the board's 64 MB SDRAM. My part was everything between the CPU and the SDRAM controller:
+
+- **Bridge** (`rtl/sdram_bridge.v`): turns a load or store into a request for Intel's SDRAM controller and holds the CPU with `mem_stall` until it's done (a load takes ~8 cycles instead of 1). It also swaps the bytes, because the controller is little-endian and our CPU big-endian.
+- **Instruction cache** (`rtl/icache.v`): 8 KB, direct-mapped, 16-byte lines. A hit gives one instruction per cycle.
+- **Data cache** (`rtl/dcache.v`): 16 KB, direct-mapped, write-through. It took Doom from **4.2 to 7.8 frames per second** in simulation.
+
+Checked with `verif/doom_mem.do` (Intel's real controller and its memory model), Verilator with random memory delays, Doom in Verilator, and on the board on Nov 26.
+
+### Annotated trace: `lw $t3, 4($s1)`
+
+From [`verif/traces/trace_I.txt`](https://github.com/Branch-to-Hell/mips/blob/main/verif/traces/trace_I.txt). To reproduce it: `python src/assembler/assembler.py src/programs/tc16_trace.asm`, then `do trace.do` in ModelSim from `verif/`.
+
+```
+Before: $s1 = 10010000  $t3 = ffffffff  mem[0x10010004] = cafe1234
+
+Cycle 1  IF   PC = 00000020 -> bytes 8e 2b 00 04 -> word 8e2b0004
+```
+The 4 bytes come from the 4 banks of the instruction memory, one byte per address, joined big-endian.
+
+```
+Cycle 2  ID   fields I: opcode = 100011, rs = 17 ($s1), rt = 11 ($t3), immediate = 0004 -> extended 00000004
+              control: RegDst = 0, ALUSrc = 1, MemtoReg = 1, RegWrite = 1, MemRead = 1, MemWrite = 0
+              register file: A = R[rs] = 10010000 · hazard unit: stall = 0
+```
+Opcode 35 is `lw`. The destination is `rt` (RegDst = 0), the ALU takes the immediate (ALUSrc = 1), and the value written back comes from memory (MemtoReg = 1). `Reg…` signals are about the register file and `Mem…` about data memory: a `lw` reads memory and writes a register. No stall: no older instruction writes `$s1`.
+
+```
+Cycle 3  EX   ALU: 10010000 + 00000004 = 10010004
+Cycle 4  MEM  memory bus: address = 10010004, read = 1 -> read data = cafe1234
+```
+The decoder sees `0x1001…`, the on-chip data memory, which answers in the same cycle. In Doom the same `lw` to an address `0x2000…` goes to the data cache: a hit also answers in the same cycle, and a miss holds the whole pipeline with `mem_stall` for ~8 cycles while the line comes from the SDRAM. That is my contribution seen from one instruction.
+
+```
+Cycle 5  WB   $t3 <= cafe1234 (bypassed to ID during the same cycle)
+
+After : $s1 = 10010000  $t3 = cafe1234  mem[0x10010004] = cafe1234
+```
+Only `$t3` changed; memory is the same (MemWrite = 0).
+
+### Conclusion: a write-through data cache
+
+When I designed the data cache I chose **write-through**: every store goes to the SDRAM, and also into the cache if the line is there. A write-back cache would be faster for stores, because it writes the SDRAM only when a line is replaced, but then the SDRAM can hold old data. Our SDRAM has two other readers that don't go through the data cache: the instruction cache and the JTAG master we use to load Doom and the WAD. With write-through the SDRAM is always up to date, so none of them can read stale data, and there is nothing to write back when a line is replaced.
+
+The cost is that every store waits ~3 cycles for the SDRAM. Even so, the data cache almost doubled Doom's speed (4.2 → 7.8 frames per second), because most accesses are loads that hit. What I learned: a cache is not only about speed. Who else reads the same memory decides how it has to write, and choosing the simpler, always-correct option first let us get Doom running on the board on the first try.
+
+## Victor
+
+<Placeholder kind="text" what="Victor's individual sheet">
+	<p><strong>Contribution:</strong> link to a PR or commit (e.g. pipeline registers #101, branches in ID #106, hazard unit #107).</p>
+	<p><strong>Annotated trace:</strong> one instruction you can run again, with your notes.</p>
+	<p><strong>Conclusion:</strong> a decision or fix of your own, and what you learned from it.</p>
+</Placeholder>
+
+## Uriel
+
+### Contribution: the assembler and the reference simulator
+
+[PR #111](https://github.com/Branch-to-Hell/mips/pull/111) added the phase 2 encodings, the pseudo-instructions `li`, `la` and `move`, and the `nop` after every jump and branch. [PR #110](https://github.com/Branch-to-Hell/mips/pull/110) added `ref_sim.py`, the software reference that prints every register write. The assembler's diagnostics (one example per error, with the line number) and the board images are part of the same work.
+
+Checked with `test_pseudo` and `test_phase2` against MARS's Data Segment, `t1_alu` against MARS's registers, and `check_asm_errors.py`, which runs the eight error examples.
+
+### Annotated trace: `add $t2, $t0, $t1`
+
+From [`verif/traces/trace_R.txt`](https://github.com/Branch-to-Hell/mips/blob/main/verif/traces/trace_R.txt). To reproduce it: `python src/assembler/assembler.py src/programs/tc16_trace.asm`, then `do trace.do` in ModelSim from `verif/`.
+
+The instruction is at `0x0000001C`, and the assembler encodes it as `0x01095021`. Before it runs, `$t0 = 5` and `$t1 = 7`.
+
+```
+Cycle 1  IF   PC = 0000001c -> word 01095021
+```
+
+```
+Cycle 2  ID   fields R: opcode = 000000, rs = 8 ($t0), rt = 9 ($t1), rd = 10 ($t2), shamt = 0, funct = 100001 (0x21)
+              control: RegDst = 1, RegWrite = 1, ALUSrc = 0, ALUOp = 10, ALU control = 0010 (add)
+              register file: A = R[rs] = 00000005, B = R[rt] = 00000007, destination = 10 ($t2)
+              hazard unit: stall = 0, redirect = 0
+```
+`RegDst = 1` selects `rd` as the destination, not `rt`, and `ALUOp = 10` tells the ALU control to read `funct` to pick the operation. Here `funct = 0x21` means add.
+
+```
+Cycle 3  EX   ALU: 00000005 + 00000007 = 0000000c
+```
+The ALU does the addition. `ALUSrc = 0` means the second operand is `$t1` and not the immediate.
+
+```
+Cycle 4  MEM  no memory access (MemRead = 0, MemWrite = 0); value to MEM/WB = 0000000c
+Cycle 5  WB   $t2 <= 0000000c at the end of the cycle
+```
+
+```
+After : $t0 = 00000005  $t1 = 00000007  $t2 = 0000000c
+```
+
+### Conclusion: where the files go and how the passes work
+
+The assembler writes its images to `mem/` by default, because that is where Quartus (at compile time) and ModelSim (`$readmemh`) look for them. `-o <folder>` is for images that must not replace the ones the board loads. The error checker uses `build/asm_errors`, so it never touches the program on the board. The two `quartus/program.qsf` lines are printed only when the output is `mem/`. What I learned: the first pass goes line by line, counts the words each line takes (including the `nop` after a branch or jump) and records the address of every label. The second pass turns the instructions into 32-bit words, now that every label has an address, and writes the `.hex` files.
+
+## Yocelyn
+
+<Placeholder kind="text" what="Yocelyn's individual sheet">
+	<p><strong>Contribution:</strong> link to a PR or commit (e.g. the Game of Life #69, edit mode #75, the graded algorithm #103).</p>
+	<p><strong>Annotated trace:</strong> one instruction you can run again, with your notes.</p>
+	<p><strong>Conclusion:</strong> a decision or fix of your own, and what you learned from it.</p>
+</Placeholder>
+
+## Team conclusion
+
+<Placeholder kind="text" what="A short team conclusion (3–5 sentences)">
+	<p>Suggested thread: the same CPU and the same system run the spec's algorithm, the Game of Life and Doom; each level only added what the previous one didn't need (SDRAM, caches, palette, compiler, boot loader).</p>
+</Placeholder>

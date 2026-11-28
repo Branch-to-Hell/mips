@@ -1,0 +1,17 @@
+---
+/* "Full screen" button for a diagram: shows its <figure> on the whole screen, for presenting.
+   Astro bundles this script once, however many diagrams use the button. */
+---
+
+<button type="button" class="fs-btn" data-fullscreen>⛶ Full screen</button>
+
+<script>
+	document.querySelectorAll<HTMLButtonElement>('[data-fullscreen]').forEach((button) => {
+		button.addEventListener('click', () => {
+			const figure = button.closest('figure');
+			if (!figure) return;
+			if (document.fullscreenElement) document.exitFullscreen();
+			else figure.requestFullscreen();
+		});
+	});
+</script>

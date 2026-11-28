@@ -1,0 +1,100 @@
+---
+title: Datapath and control
+description: Our datapath diagram, how the four instruction bytes are joined, how the bits of an instruction become control signals, and one instruction followed through the five stages.
+---
+
+import Datapath from '../../components/Datapath.astro';
+
+:::tip[In 30 seconds]
+- The **PC** says which instruction to fetch. The **instruction memory** gives 4 bytes, joined big-endian into one 32-bit word.
+- The **control unit** reads the opcode (and funct) and turns them into **control signals**: 1-bit wires that say "write a register", "read memory", "use the immediate"…
+- Those signals travel with the instruction through the **pipeline registers**, so each stage knows what to do with it.
+:::
+
+<Datapath />
+
+Branches and jumps are decided in **ID** (comparator and target adders there), so the fetch is redirected early and only the instruction in the [delay slot](/pipeline/#the-branch-delay-slot) has already been fetched. The register file is written at the end of WB and **bypassed to ID** in the same cycle. There is no forwarding: when an operand isn't ready, the **hazard unit** stalls ([Pipeline and hazards](/pipeline/)).
+
+## The four fetch bytes
+
+The spec asks for one byte per address and a big-endian fetch: the word is `mem[PC]`, `mem[PC+1]`, `mem[PC+2]`, `mem[PC+3]`, from the most significant byte to the least.
+
+The instruction memory is built as **4 byte banks**: bank *k* holds the bytes whose address ends in *k* (`addr[1:0] = k`). All four are read in the **same cycle** with `PC[13:2]` and joined as `{bank0, bank1, bank2, bank3}`, so a fetch still takes one cycle.
+
+| | PC | PC + 1 | PC + 2 | PC + 3 | Word |
+|---|---|---|---|---|---|
+| `lw $t3, 4($s1)` at `0x20` | `8E` | `2B` | `00` | `04` | `0x8E2B0004` |
+| Bank | b0 → bits 31–24 | b1 → 23–16 | b2 → 15–8 | b3 → 7–0 | |
+
+The assembler writes the byte image (`<name>_bytes.hex`, one byte per address: the spec's loadable image) and the four bank files that Quartus loads. `instruction_memory.do` checks every fetch of the Game of Life (647 fetches): the 4 bytes, the 4 banks and the joined word.
+
+## From bits to control signals
+
+The control unit (`rtl/control_unit.v`) looks only at the **opcode**; for R-type (opcode 0), `alu_control.v` then looks at **funct**.
+
+| Instruction | RegDst | ALUSrc | MemtoReg | RegWrite | MemRead | MemWrite | Branch | Jump | ALUOp |
+|---|---|---|---|---|---|---|---|---|---|
+| R-type (`add sub and or slt`) | 1 | 0 | 0 | **1** | 0 | 0 | 0 | 0 | 10 |
+| `addi` | 0 | 1 | 0 | **1** | 0 | 0 | 0 | 0 | 00 |
+| `ori` | 0 | 1 | 0 | **1** | 0 | 0 | 0 | 0 | 11 |
+| `lw` | 0 | 1 | 1 | **1** | **1** | 0 | 0 | 0 | 00 |
+| `sw` | 0 | 1 | 0 | 0 | 0 | **1** | 0 | 0 | 00 |
+| `beq` | 0 | 0 | 0 | 0 | 0 | 0 | **1** | 0 | 01 |
+| `j` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | **1** | 00 |
+
+What each signal means:
+
+| Signal | 1 means |
+|---|---|
+| **RegDst** | The destination register is `rd` (R-type); 0 = `rt` (I-type) |
+| **ALUSrc** | The ALU's second operand is the immediate; 0 = register B |
+| **MemtoReg** | The value written back comes from memory (`lw`); 0 = from the ALU |
+| **RegWrite** | A register is written in WB |
+| **MemRead** / **MemWrite** | Data memory is read / written in MEM |
+| **Branch** | Conditional branch: compare A and B in ID |
+| **Jump** | Unconditional jump: take the J-type target in ID |
+| **ALUOp** | Tells the ALU control what to do: 00 add, 01 subtract, 10 look at funct, 11 look at the opcode |
+
+`Reg…` signals are about the **register file**; `Mem…` signals are about **data memory**. That is why `lw` has `MemRead = 1` and `RegWrite = 1` (memory → register) and `sw` has only `MemWrite = 1` (register → memory).
+
+### ALU control
+
+| ALUOp | funct / opcode | ALU operation | ALUctl |
+|---|---|---|---|
+| 00 | — (`lw`, `sw`, `addi`) | add | `0010` |
+| 01 | — (`beq`) | subtract | `0110` |
+| 10 | funct `0x21` / `0x20` (`add`) | add | `0010` |
+| 10 | funct `0x23` / `0x22` (`sub`) | subtract | `0110` |
+| 10 | funct `0x24` (`and`) | AND | `0000` |
+| 10 | funct `0x25` (`or`) | OR | `0001` |
+| 10 | funct `0x2A` (`slt`) | set on less than (signed) | `0111` |
+| 11 | opcode `0x0D` (`ori`) | OR | `0001` |
+
+## One instruction, stage by stage
+
+`lw $t3, 4($s1)` at PC `0x20`, with `$s1 = 0x1001_0000` and `mem[0x1001_0004] = 0xCAFE1234`. Taken from the real trace of our CPU ([`trace_I.txt`](https://github.com/Branch-to-Hell/mips/blob/main/verif/traces/trace_I.txt)).
+
+| Cycle | Stage | What happens | Values |
+|---|---|---|---|
+| 1 | **IF** | Read 4 bytes at PC, join them, load IF/ID | bytes `8e 2b 00 04` → `0x8E2B0004` |
+| 2 | **ID** | Split the fields, generate the control signals, read the registers, extend the immediate | opcode 35, rs 17 (`$s1`), rt 11 (`$t3`), imm 4 · ALUSrc 1, MemtoReg 1, RegWrite 1, MemRead 1 · A = `0x10010000` · no stall |
+| 3 | **EX** | ALU adds base + offset | `0x10010000 + 4 = 0x10010004` |
+| 4 | **MEM** | The decoder sees `0x1001…` → data memory, read | read data = `0xCAFE1234` |
+| 5 | **WB** | Write the value into the destination | `$t3 ← 0xCAFE1234` |
+
+The PC itself is the next fetch address: while this `lw` is in ID, IF is already fetching `0x24`.
+
+## Modules
+
+| Part of the diagram | File |
+|---|---|
+| PC, next-PC select, branch/jump targets, bypass, stage wiring | `rtl/mips_pipeline.v` |
+| Instruction memory (4 byte banks) and IF/ID | `rtl/instruction_memory.v`, `rtl/if_id_register.v` |
+| Control unit, ALU control | `rtl/control_unit.v`, `rtl/alu_control.v` |
+| Register file | `rtl/register_file.v` |
+| Hazard unit | `rtl/hazard_unit.v` |
+| ALU, multiply/divide | `rtl/alu.v`, `rtl/mult_div.v` |
+| ID/EX, EX/MEM, MEM/WB | `rtl/pipeline_register.v` |
+| Memory bus, decoder and devices | `rtl/life_system.v`, `rtl/data_memory.v`, `rtl/mmio.v`, `rtl/video_mode_a.v` |
+
+The repository also keeps the **single-cycle** CPU (`rtl/mips_cpu.v`), which shares the control unit, ALU and register file. It ran the Game of Life on the board first, while the pipeline was being built.

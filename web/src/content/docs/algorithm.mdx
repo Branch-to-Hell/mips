@@ -1,0 +1,137 @@
+---
+title: 'Graded algorithm: frequency of a value'
+description: The algorithm the spec grades - pseudocode, register and data maps, the program, three inputs (one edge case) with expected and observed results, and how to run it on the board.
+---
+
+import { Image } from 'astro:assets';
+import algTop from '../../assets/lab/algorithm-top.jpg';
+import algAngle from '../../assets/lab/algorithm-angle.jpg';
+
+:::tip[In 30 seconds]
+- Counts **how many times a value (`target`) appears** in an array of `n` words and stores the count. Chosen from the spec's options ("frequency of values").
+- It has what the spec asks for: a **loop**, a **decision**, `lw` and `sw`, and R, I and J instructions. It ends in a **self-jump** with the result already stored.
+- Three inputs, one of them the edge case (an empty array): our CPU gives the expected result in all three.
+:::
+
+## Pseudocode
+
+```
+count = 0
+i = 0
+if n <= 0: go to done          # edge case: empty array
+while i != n:                  # loop
+    x = array[i]               # lw
+    if x == target:            # decision (beq)
+        count = count + 1
+    i = i + 1
+done:
+result = count                 # sw
+loop forever                   # observable end point (self-jump)
+```
+
+## Data map
+
+Bytes from `0x1001_0000`, the start of `.data`:
+
+| Offset | Address | Name | Meaning |
+|---|---|---|---|
+| +0 | `0x1001_0000` | `n` | Number of elements |
+| +4 | `0x1001_0004` | `target` | Value to count |
+| +8 | `0x1001_0008` | `result` | The count, written by the program |
+| +12 | `0x1001_000C` | `array` | `n` words |
+
+## Register map
+
+| Register | Holds |
+|---|---|
+| `$s0` | Data base `0x1001_0000` |
+| `$t0` | `n` |
+| `$t1` | `target` |
+| `$t2` | Address of the current element (`array[i]`) |
+| `$t3` | `count` |
+| `$t4` | `i` |
+| `$t5` | `array[i]` |
+| `$t6` | Guard: 1 when `0 < n` |
+
+## The program
+
+`src/programs/count_value_in1.asm` (input 1; inputs 2 and 3 change only `.data`):
+
+```asm
+.data
+n:      .word 8
+target: .word 3
+result: .word 0
+array:  .word 3, -1, 3, 3, -1, 0, 3, 5
+
+.text
+main:
+    lui  $s0, 0x1001            # s0 = 0x10010000 (data base)
+    lw   $t0, 0($s0)            # t0 = n
+    lw   $t1, 4($s0)            # t1 = target
+    addi $t2, $s0, 12           # t2 = address of array[0]
+    add  $t3, $zero, $zero      # count = 0
+    add  $t4, $zero, $zero      # i = 0
+    slt  $t6, $zero, $t0        # t6 = 1 if 0 < n
+    beq  $t6, $zero, done       # n <= 0: nothing to count (edge case)
+loop:
+    beq  $t4, $t0, done         # i == n: finished
+    lw   $t5, 0($t2)            # t5 = array[i]
+    beq  $t5, $t1, hit          # decision: element equals target?
+    j    next
+hit:
+    addi $t3, $t3, 1            # count = count + 1
+next:
+    addi $t2, $t2, 4            # next element
+    addi $t4, $t4, 1            # i = i + 1
+    j    loop
+done:
+    sw   $t3, 8($s0)            # result = count
+end:
+    j    end                    # observable end point
+```
+
+**Instructions used:** `add`, `slt` (R) · `addi`, `lw`, `sw`, `beq` (I) · `j` (J), all from the required set, plus `lui` (documented extension) to build `0x1001_0000`. The assembled listing, with the addresses and words, is on the [Assembler](/assembler/#listing) page.
+
+## Three inputs
+
+"Observed" is our pipelined CPU on the board's hardware (`life_system`), from `verif/tc15.do`. MARS gives the same values.
+
+| # | File | n | target | array | Expected | Observed |
+|---|---|---|---|---|---|---|
+| 1 | `count_value_in1.asm` | 8 | 3 | 3, −1, 3, 3, −1, 0, 3, 5 | 4 | **4** (self-jump after 118 cycles) |
+| 2 | `count_value_in2.asm` | 4 | 7 | 7, 7, 7, 7 | 4 | **4** (self-jump after 66 cycles) |
+| 3 | `count_value_in3.asm` (**edge**: empty array) | 0 | 5 | (none) | 0 | **0** (self-jump after 16 cycles) |
+
+Input 1 also has negative numbers, so `beq` compares full 32-bit signed values. Input 3 tests the guard before the loop: with `n = 0` the program goes straight to `done`. `tc15.do` also checks that `n` and `target` are unchanged and that the count shows on the HEX register view.
+
+## How to reproduce
+
+**Assemble** (for k = 1, 2, 3):
+
+```
+python src/assembler/assembler.py src/programs/count_value_in<k>.asm
+```
+
+**Simulation (ModelSim):** from `verif/`, `do tc15.do` runs the three inputs and prints `PASS` or `FAIL`.
+
+**MARS:** open the file, Assemble, Run, Stop. In the data segment, the third word (`0x1001_0008`) is the result.
+
+## On the board
+
+1. In `quartus/program.qsf`, set `PROGRAM "count_value_in<k>"` and `WITH_DATA 1` (the assembler prints both lines).
+2. Compile the `program` revision in Quartus and program the board. The program runs right away and stops in `j end`.
+3. **SW9 up** and **SW4–SW0 = 01011** (register 11, `$t3` = count): HEX3–HEX0 show the count.
+
+<div class="photo-grid not-content">
+	<figure>
+		<Image src={algTop} alt="The DE10-Lite after count_value_in1: HEX shows 11 and 0004, SW9, SW3, SW1 and SW0 up" />
+		<figcaption>SW9 up (register view), SW4–0 = 01011: register 11</figcaption>
+	</figure>
+	<figure>
+		<Image src={algAngle} alt="The same result from another angle: HEX shows 11 0004" />
+		<figcaption>HEX5–4 = <code>11</code> (<code>$t3</code>), HEX3–0 = <code>0004</code> (the count)</figcaption>
+	</figure>
+</div>
+
+Input 1 on the board (Nov 26): the count is **4**, as expected.

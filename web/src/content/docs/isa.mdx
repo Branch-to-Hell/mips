@@ -1,0 +1,99 @@
+---
+title: Instruction set
+description: The three instruction formats, the 12 required instructions with their encodings, and the extensions for the Game of Life and Doom.
+---
+
+import Fields from '../../components/Fields.astro';
+
+:::tip[In 30 seconds]
+- Every instruction is **32 bits**, split into **fields**. The format (R, I or J) says how.
+- The **opcode** (6 bits) says which instruction it is; R-type instructions also need **funct**.
+- We run the **12 required** instructions, the ones the Game of Life needs, and the rest of the **MIPS I integer set**, because GCC uses all of it for Doom.
+:::
+
+## The three formats
+
+### R-type: three registers
+
+<Fields format="R" values={['0', '8 ($t0)', '9 ($t1)', '10 ($t2)', '0', '0x21 (add)']} caption="add $t2, $t0, $t1 → 0x01095021. The destination is written first in the text but goes in rd, the third register field." />
+
+### I-type: two registers and a 16-bit immediate
+
+<Fields format="I" values={['0x23 (lw)', '17 ($s1)', '11 ($t3)', '4']} caption="lw $t3, 4($s1) → 0x8E2B0004. The register in parentheses is the base (rs); rt is the destination for addi/ori/lw and the data for sw." />
+
+### J-type: a 26-bit index
+
+<Fields format="J" values={['0x02 (j)', '0x000000C']} caption="j j_target at PC 0x24 → 0x0800000C. The target is {(PC+4)[31:28], index, 00} = 0x30." />
+
+These three words come from our [traces](/tests/#traces-r-i-j): the same instructions, followed cycle by cycle on the CPU.
+
+### How the immediate is used
+
+| Instruction | Immediate | How |
+|---|---|---|
+| `addi`, `lw`, `sw`, `slti` | −32768 … 32767 | **Sign**-extended to 32 bits |
+| `ori`, `andi` | 0 … 65535 | **Zero**-extended to 32 bits |
+| `beq`, `bne` | distance in instructions | Target = (PC + 4) + imm × 4. The assembler computes imm = (label − (PC + 4)) / 4 |
+| `lui` | 0 … 65535 | Goes to the upper 16 bits |
+
+Example from the graded algorithm: `beq $t5, $t1, hit` at `0x30` is `0x11A90003` (imm = 3), so a taken branch goes to `0x34 + 3 × 4 = 0x40`, where `hit` is.
+
+## The required instructions
+
+The spec's table, with the test that checks each one ([all tests](/tests/)).
+
+| Instruction | Format | opcode / funct (hex) | Operation | Tested in |
+|---|---|---|---|---|
+| `add rd, rs, rt` | R | 00 / 21 | rd = rs + rt (mod 2³²) | `tc4_rtype` 1, 2 · trace R |
+| `sub rd, rs, rt` | R | 00 / 23 | rd = rs − rt (mod 2³²) | `tc4_rtype` 3, 4 |
+| `and rd, rs, rt` | R | 00 / 24 | rd = rs AND rt | `tc4_rtype` 5 |
+| `or rd, rs, rt` | R | 00 / 25 | rd = rs OR rt | `tc4_rtype` 6 |
+| `slt rd, rs, rt` | R | 00 / 2A | rd = 1 if `rs < rt` (signed), else 0 | `tc4_rtype` 9–12 |
+| `addi rt, rs, imm` | I | 09 | rt = rs + sign-extended imm | `tc4_itype` 1, 2 |
+| `ori rt, rs, imm` | I | 0D | rt = rs OR zero-extended imm | `tc4_itype` 5, 6, 12 |
+| `lw rt, imm(rs)` | I | 23 | rt = memory[rs + imm] | `tc4_memory` 1–10 · trace I |
+| `sw rt, imm(rs)` | I | 2B | memory[rs + imm] = rt | `tc4_memory` 1–9 |
+| `beq rs, rt, label` | I | 04 | if rs = rt: PC = PC + 4 + imm × 4 | `tc4_branches` 1, 2, 5, 6, 8 |
+| `j label` | J | 02 | PC = `{(PC+4)[31:28], index, 00}` | `tc4_jumps` 1, 4 · trace J |
+
+`add`, `sub` and `addi` use the professor's codes (`0x21`, `0x23`, `0x09`, which in MIPS are `addu`, `subu`, `addiu`). Without overflow exceptions both codes do the same, so the **hardware accepts both** (`0x20`/`0x21`, `0x22`/`0x23`, `0x08`/`0x09`) and the assembler emits the professor's. Checked by `cpu11.do`.
+
+## Extensions
+
+### For the Game of Life (level 1)
+
+| Instructions | Why |
+|---|---|
+| `bne`, `slti` | More decisions: "not equal" for loops, "less than" for ranges |
+| `sll`, `srl` | Multiply and divide by powers of 2: `row × 32` is `sll 5` |
+| `andi`, `nor` | Masks: wrap the column with `andi 31`, detect a key press with `nor` |
+| `lui` | Build 32-bit addresses like `0x1004_0000` (the framebuffer) |
+| `jal`, `jr` | Call and return from functions (`generation`, `draw`) |
+| `addu`, `subu`, `addiu` | The standard MIPS names of the professor's codes |
+
+### For C and Doom (level 2)
+
+GCC doesn't let us choose: it uses the whole MIPS I integer set. So the CPU also runs:
+
+`sltu sltiu xor xori sra sllv srlv srav` · `lb lbu lh lhu sb sh` (bytes and halves, big-endian byte lanes) · `bltz bgez blez bgtz bltzal bgezal jalr` · `mult multu div divu mfhi mflo mthi mtlo` (HI/LO unit: multiply in 1 cycle, divide in 32 cycles in the background).
+
+**Not implemented:** floating point (C is compiled with software floating point), `lwl lwr swl swr` (GCC only uses them for packed data; we build Doom without them), and exceptions (`syscall`, `break` and unknown instructions do nothing). The Doom build checks every instruction GCC produced and **stops if one is outside this set** (`elf2hex.py --isa`), because an unknown instruction would silently run as a `nop`.
+
+## Registers
+
+32 registers of 32 bits, all 0 after reset except `$sp`. `$zero` always reads 0 and ignores writes.
+
+| Number | Name | Use |
+|---|---|---|
+| 0 | `$zero` | Always 0 |
+| 1 | `$at` | Reserved for the assembler |
+| 2–3 | `$v0`–`$v1` | Function results |
+| 4–7 | `$a0`–`$a3` | Function arguments |
+| 8–15 | `$t0`–`$t7` | Temporaries |
+| 16–23 | `$s0`–`$s7` | Saved values (e.g. `$s1` = the Life board) |
+| 24–25 | `$t8`–`$t9` | More temporaries |
+| 26–27 | `$k0`–`$k1` | Free here (no exceptions) |
+| 28 | `$gp` | Global pointer |
+| 29 | `$sp` | Stack pointer, starts at `0x7FFF_EFFC` |
+| 30 | `$fp` | Frame pointer |
+| 31 | `$ra` | Return address (`jal` writes PC + 8, see the [delay slot](/pipeline/#the-branch-delay-slot)) |
